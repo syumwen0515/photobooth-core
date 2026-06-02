@@ -78,6 +78,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] LINE BOT 整合（Webhook / 輸入取件碼查詢）
 - [x] ngrok 外網穿透（API + 管理 UI）
 - [x] 系統一鍵重置（清除所有照片、設定、取件碼）
+- [x] 管理後台「開啟資料夾」快速開啟 incoming 目錄（跨平台；僅本機存取可用，ngrok 等遠端連線自動隱藏按鈕並由後端 403 雙重封鎖）
 
 ## 工作流程
 
@@ -128,6 +129,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | GET | `/api/admin/incoming/thumb/{filename}` | 取得縮圖（480px WebP，有快取）|
 | DELETE | `/api/admin/incoming/{filename}` | 刪除單張 |
 | DELETE | `/api/admin/incoming` | 清除全部 |
+| POST | `/api/admin/open-incoming-folder` | 以系統檔案總管開啟 incoming 資料夾（僅限本機，遠端回傳 403）|
 
 ### ngrok
 | 方法 | 端點 | 說明 |

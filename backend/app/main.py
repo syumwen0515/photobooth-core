@@ -2,6 +2,8 @@ import asyncio
 import functools
 import json
 import os
+import subprocess
+import sys
 import random
 import logging
 from urllib.parse import quote
@@ -10,6 +12,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Cookie, Request
+from websockets.exceptions import ConnectionClosedError
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -340,7 +343,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         while True:
             await websocket.receive_text()
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, ConnectionClosedError):
         manager.disconnect(websocket)
     except Exception as e:
         logger.error(f"❌ WebSocket 處理失敗: {e}")
@@ -577,6 +580,25 @@ async def clear_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Di
     if deleted:
         _save_photo_codes()
     return {"deleted": deleted, "errors": errors, "count": len(deleted)}
+
+
+@app.post(f"{API_ADMIN_PREFIX}/open-incoming-folder", tags=["Incoming"])
+async def open_incoming_folder(request: Request, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
+    _require_auth(pb_session)
+    host = request.headers.get("host", "").split(":")[0]
+    if host not in ("localhost", "127.0.0.1", "::1"):
+        raise HTTPException(status_code=403, detail="此功能僅限本機存取")
+    folder = INCOMING_DIR.resolve()
+    try:
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", str(folder)])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(folder)])
+        else:
+            subprocess.Popen(["xdg-open", str(folder)])
+        return {"message": "已開啟資料夾", "path": str(folder)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"無法開啟資料夾: {e}")
 
 
 

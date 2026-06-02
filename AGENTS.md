@@ -28,6 +28,7 @@
 - [x] 帳號管理（新增 / 刪除 / 改密碼）
 - [x] 首頁底圖上傳 / 刪除
 - [x] incoming 照片列表 / 刪除單張 / 清除全部
+- [x] 管理後台「開啟資料夾」按鈕（`POST /api/admin/open-incoming-folder`，跨平台開啟 incoming 目錄，僅限本機存取：前端依 hostname 隱藏按鈕，後端檢查 Host header 回傳 403）
 - [x] WebSocket 即時推播新照片
 - [x] Watchdog 監聽 incoming/ 資料夾
 - [x] 縮圖快取系統（480px WebP，storage/thumbs/，API `/api/admin/incoming/thumb/{filename}`）
@@ -86,4 +87,4 @@ backend/storage/
   - 帳號管理（列表 / 新增 / 改密碼 / 刪除）
 - **拍攝照片**
   - incoming 照片 grid（縮圖 via `/api/admin/incoming/thumb/{filename}`，含取件碼顯示）
-  - 單張刪除 / 清除全部
+  - 單張刪除 / 清除全部 / 開啟資料夾

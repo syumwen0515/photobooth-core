@@ -340,10 +340,16 @@
                     <span class="text-base font-light text-wa-gray">照片</span>
                     <span id="incomingCount" class="text-xs text-wa-blue font-light"></span>
                 </div>
-                <button onclick="clearIncoming()"
-                        class="px-3 py-1.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-red-300 hover:text-red-400 transition-all">
-                    清除全部
-                </button>
+                <div class="flex items-center gap-2">
+                    <button id="openFolderBtn" onclick="openIncomingFolder()"
+                            class="px-3 py-1.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-wa-blue hover:text-wa-blue transition-all">
+                        開啟資料夾
+                    </button>
+                    <button onclick="clearIncoming()"
+                            class="px-3 py-1.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-red-300 hover:text-red-400 transition-all">
+                        清除全部
+                    </button>
+                </div>
             </div>
             <div class="p-5">
                 <div id="incomingGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -466,6 +472,23 @@
             loadIncoming();
         } catch (err) {
             alert('清除失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+        }
+    }
+
+    // 僅本機存取時才顯示「開啟資料夾」按鈕
+    (function () {
+        const isLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+        if (!isLocal) {
+            const btn = document.getElementById('openFolderBtn');
+            if (btn) btn.style.display = 'none';
+        }
+    })();
+
+    async function openIncomingFolder() {
+        try {
+            await axios.post(`${API_URL}/api/admin/open-incoming-folder`);
+        } catch (err) {
+            alert('無法開啟資料夾: ' + (err.response?.data?.detail || '未知錯誤'));
         }
     }
 
