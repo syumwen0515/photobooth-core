@@ -463,7 +463,41 @@
 
     </div><!-- /tab-photos -->
 
+
 </div><!-- /max-w-4xl -->
+
+<!-- ── 改密碼 Modal ─────────────────────────────────────── -->
+<div id="pwModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/30 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl border border-wa-light shadow-lg w-80 mx-4 p-6 space-y-4">
+        <h3 class="text-base font-light text-wa-gray">變更密碼</h3>
+        <p id="pwModalUser" class="text-xs text-wa-blue font-light"></p>
+        <div class="space-y-3">
+            <div>
+                <label class="block text-xs text-wa-blue font-light mb-1">新密碼</label>
+                <input type="password" id="pwInput"
+                       class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue"
+                       placeholder="至少 8 個字元">
+            </div>
+            <div>
+                <label class="block text-xs text-wa-blue font-light mb-1">確認新密碼</label>
+                <input type="password" id="pwConfirmInput"
+                       class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue"
+                       placeholder="再次輸入新密碼">
+            </div>
+            <p id="pwModalErr" class="hidden text-xs text-red-400 font-light"></p>
+        </div>
+        <div class="flex justify-end gap-2 pt-1">
+            <button onclick="closePwModal()"
+                    class="px-4 py-1.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:bg-wa-light transition-all">
+                取消
+            </button>
+            <button onclick="submitChangePassword()"
+                    class="px-4 py-1.5 text-xs font-light rounded bg-wa-blue text-white hover:bg-wa-blue/90 transition-all active:scale-95">
+                確認變更
+            </button>
+        </div>
+    </div>
+</div>
 
 <script>
     const API_URL = '';
@@ -859,14 +893,43 @@
         }
     }
 
-    async function changePassword(username) {
-        const pw = prompt(`請輸入帳號「${username}」的新密碼（至少 8 個字元）：`);
-        if (!pw) return;
+    let _pwTarget = null;
+
+    function changePassword(username) {
+        _pwTarget = username;
+        document.getElementById('pwModalUser').textContent = `帳號：${username}`;
+        document.getElementById('pwInput').value = '';
+        document.getElementById('pwConfirmInput').value = '';
+        document.getElementById('pwModalErr').classList.add('hidden');
+        const modal = document.getElementById('pwModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        document.getElementById('pwInput').focus();
+    }
+
+    function closePwModal() {
+        const modal = document.getElementById('pwModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        _pwTarget = null;
+    }
+
+    async function submitChangePassword() {
+        const pw      = document.getElementById('pwInput').value;
+        const confirm = document.getElementById('pwConfirmInput').value;
+        const errEl   = document.getElementById('pwModalErr');
+        errEl.classList.add('hidden');
+
+        if (!pw) { errEl.textContent = '請輸入新密碼'; errEl.classList.remove('hidden'); return; }
+        if (pw.length < 8) { errEl.textContent = '密碼至少需要 8 個字元'; errEl.classList.remove('hidden'); return; }
+        if (pw !== confirm) { errEl.textContent = '兩次輸入的密碼不一致'; errEl.classList.remove('hidden'); return; }
+
         try {
-            await axios.put(`${API_URL}/api/admin/accounts/${encodeURIComponent(username)}/password`, { new_password: pw });
-            alert('密碼已更新');
+            await axios.put(`${API_URL}/api/admin/accounts/${encodeURIComponent(_pwTarget)}/password`, { new_password: pw });
+            closePwModal();
         } catch (err) {
-            alert('更新失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            errEl.textContent = '更新失敗：' + (err.response?.data?.detail || '未知錯誤');
+            errEl.classList.remove('hidden');
         }
     }
 
@@ -1013,6 +1076,15 @@
         ws.onerror = () => ws.close();
         ws.onclose = () => setTimeout(connectWebSocket, 3000);
     }
+
+    // ── Modal keyboard / backdrop ──────────────────────────
+    document.getElementById('pwModal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closePwModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closePwModal();
+        if (e.key === 'Enter' && _pwTarget) submitChangePassword();
+    });
 
     // ── Init ───────────────────────────────────────────────
     window.addEventListener('DOMContentLoaded', async () => {
