@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>取件照片</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300&display=swap');
+        body { font-family: 'Noto Sans JP', sans-serif; background: #f5f5f0; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center px-4 py-12">
+    <div class="w-full max-w-sm flex flex-col items-center gap-6">
+        <p class="text-xs tracking-widest text-gray-400 uppercase">Photo Pickup</p>
+        <img
+            src="/api/photo/{code}"
+            alt="您的照片"
+            class="w-full rounded-lg shadow-lg object-contain"
+        />
+        <a
+            href="/api/photo/{code}?dl=1"
+            class="w-full text-center py-3 rounded-lg bg-gray-800 text-white text-sm tracking-widest hover:bg-gray-700 active:scale-95 transition-all"
+        >
+            下載照片
+        </a>
+        <p class="text-xs text-gray-400">取件碼：{code}</p>
+    </div>
+</body>
+</html>

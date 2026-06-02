@@ -1,0 +1,30 @@
+# Python 嵌入式執行環境（不進版控，各機器自行設定）
+python/
+
+# Python 快取
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 使用者資料（不進版控）
+backend/storage/incoming/
+backend/storage/final/
+backend/storage/bg/
+backend/storage/accounts.json
+backend/storage/photo_codes.json
+backend/storage/line_config.json
+backend/storage/ngrok_config.json
+
+# 虛擬環境（如果用 venv 開發）
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store

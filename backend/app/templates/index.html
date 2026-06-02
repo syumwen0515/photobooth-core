@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>風嶺拍貼機</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'wa-cream': '#f5f5f0',
+                        'wa-blue':  '#b8c5d6',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300;400&display=swap');
+        body { font-family: 'Noto Sans JP', sans-serif; }
+
+        /* Background image layer */
+        #bg {
+            position: absolute; inset: 0;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            transition: opacity 1.2s ease;
+            opacity: 0;
+        }
+        #bg-overlay {
+            position: absolute; inset: 0;
+            background: linear-gradient(
+                160deg,
+                rgba(8, 8, 16, 0.45) 0%,
+                rgba(8, 8, 16, 0.60) 60%,
+                rgba(8, 8, 16, 0.78) 100%
+            );
+            opacity: 0;
+            transition: opacity 1.2s ease;
+        }
+
+        /* Corner bracket decoration */
+        .frame-corner {
+            position: absolute;
+            width: 28px;
+            height: 28px;
+        }
+        .frame-corner::before,
+        .frame-corner::after {
+            content: '';
+            position: absolute;
+            background: rgba(184, 197, 214, 0.35);
+        }
+        .frame-corner::before { width: 100%; height: 1px; top: 0; left: 0; }
+        .frame-corner::after  { width: 1px; height: 100%; top: 0; left: 0; }
+        .frame-corner.tr { transform: rotate(90deg);  top: 0; right: 0; }
+        .frame-corner.bl { transform: rotate(270deg); bottom: 0; left: 0; }
+        .frame-corner.br { transform: rotate(180deg); bottom: 0; right: 0; }
+
+        /* Vertical writing decoration */
+        .vert-label {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            font-size: 0.6rem;
+            font-weight: 300;
+            letter-spacing: 0.3em;
+            color: rgba(184, 197, 214, 0.28);
+        }
+
+        /* Button */
+        .btn-ghost {
+            display: inline-block;
+            padding: 11px 38px;
+            font-size: 0.72rem;
+            font-weight: 300;
+            letter-spacing: 0.22em;
+            border: 1px solid rgba(184, 197, 214, 0.3);
+            color: rgba(245, 245, 240, 0.65);
+            border-radius: 2px;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .btn-ghost:hover {
+            border-color: rgba(184, 197, 214, 0.65);
+            color: rgba(245, 245, 240, 0.92);
+            background: rgba(184, 197, 214, 0.06);
+            transform: translateY(-2px);
+        }
+
+        /* Entrance animation */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .anim { animation: fadeUp 1s ease forwards; opacity: 0; }
+        .d1   { animation-delay: 0.1s; }
+        .d2   { animation-delay: 0.35s; }
+        .d3   { animation-delay: 0.6s; }
+        .d4   { animation-delay: 0.85s; }
+    </style>
+</head>
+<body class="relative min-h-screen overflow-hidden" style="background: #0c0c16;">
+
+    <div id="bg"></div>
+    <div id="bg-overlay"></div>
+
+    <!-- Frame corner decorations -->
+    <div class="absolute inset-7 pointer-events-none" style="z-index: 5;">
+        <div class="frame-corner" style="top:0;left:0;"></div>
+        <div class="frame-corner tr"></div>
+        <div class="frame-corner bl"></div>
+        <div class="frame-corner br"></div>
+    </div>
+
+    <!-- Vertical side labels -->
+    <div class="absolute left-7 top-1/2 -translate-y-1/2 pointer-events-none" style="z-index: 5;">
+        <span class="vert-label">拍貼機 · PHOTOBOOTH</span>
+    </div>
+    <div class="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none" style="z-index: 5;">
+        <span class="vert-label">風嶺 · CCIT</span>
+    </div>
+
+    <!-- Main content -->
+    <div class="relative z-10 min-h-screen flex flex-col items-center justify-center px-16 select-none">
+
+        <!-- Top decorative rule -->
+        <div class="anim d1 flex items-center gap-3 mb-10">
+            <div style="width:40px; height:1px; background:rgba(184,197,214,0.25);"></div>
+            <div style="width:5px; height:5px; border:1px solid rgba(184,197,214,0.35); transform:rotate(45deg);"></div>
+            <div style="width:40px; height:1px; background:rgba(184,197,214,0.25);"></div>
+        </div>
+
+        <!-- Brand -->
+        <div class="anim d2 text-center">
+            <div style="
+                font-size: clamp(3.2rem, 9vw, 6.5rem);
+                font-weight: 100;
+                letter-spacing: 0.38em;
+                text-indent: 0.38em;
+                line-height: 1;
+                color: #f5f5f0;
+            ">風嶺</div>
+            <div style="
+                font-size: clamp(1rem, 2.5vw, 1.6rem);
+                font-weight: 200;
+                letter-spacing: 0.6em;
+                text-indent: 0.6em;
+                margin-top: 0.55rem;
+                color: rgba(245,245,240,0.52);
+            ">拍貼機</div>
+        </div>
+
+        <!-- Middle divider -->
+        <div class="anim d3 flex flex-col items-center mt-8 mb-8 gap-0">
+            <div style="width:1px; height:32px; background: linear-gradient(to bottom, rgba(184,197,214,0.25), rgba(184,197,214,0.06));"></div>
+            <div style="
+                font-size: 0.58rem;
+                letter-spacing: 0.38em;
+                color: rgba(184,197,214,0.38);
+                font-weight: 300;
+                margin: 10px 0;
+            ">CCIT · PHOTO STUDIO</div>
+            <div style="width:1px; height:32px; background: linear-gradient(to bottom, rgba(184,197,214,0.06), transparent);"></div>
+        </div>
+
+        <!-- Action button -->
+        <div class="anim d4">
+            <a href="/admin" class="btn-ghost">管理員後台</a>
+        </div>
+
+    </div>
+
+    <!-- Bottom label -->
+    <div class="absolute bottom-7 left-0 right-0 text-center pointer-events-none" style="z-index: 10;">
+        <span style="font-size:0.58rem; letter-spacing:0.28em; color:rgba(184,197,214,0.22); font-weight:300;">
+            風嶺拍貼機 · PHOTOBOOTH SYSTEM
+        </span>
+    </div>
+
+<script>
+    const bgEl      = document.getElementById('bg');
+    const overlayEl = document.getElementById('bg-overlay');
+
+    function loadBg(src) {
+        const probe = new Image();
+        probe.onload = function () {
+            bgEl.style.backgroundImage = "url('" + src + "')";
+            bgEl.style.opacity = '1';
+            overlayEl.style.opacity = '1';
+        };
+        probe.onerror = function () {
+            if (src.endsWith('.webp')) {
+                loadBg('/static/bg/bg.jpg?' + Date.now());
+            } else {
+                bgEl.style.background = 'radial-gradient(ellipse at 30% 40%, #1a1a2e 0%, #0c0c16 100%)';
+                bgEl.style.opacity = '1';
+            }
+        };
+        probe.src = src;
+    }
+
+    const ts = Date.now();
+    const canvas = document.createElement('canvas');
+    const supportsWebP = canvas.toDataURL('image/webp').startsWith('data:image/webp');
+    loadBg(supportsWebP ? '/static/bg/bg.webp?' + ts : '/static/bg/bg.jpg?' + ts);
+</script>
+</body>
+</html>
