@@ -73,7 +73,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ### 已完成
 - [x] 管理員登入 / 登出 / Session 管理（5 次失敗鎖定 10 分鐘）
-- [x] 帳號管理（新增 / 刪除 / 改密碼，密碼最短 8 字元）
+- [x] 帳號管理（新增 / 刪除 / 改密碼，密碼最短 8 字元；改密碼使用頁內 Modal + 密碼遮罩 + 確認欄位，不使用明碼 `prompt()`）
 - [x] 首頁底圖上傳 / 刪除（自動輸出 JPEG + WebP 雙格式）
 - [x] 首頁文字客製化（主標題 / 副標題 / 中段文字 / 字體）
 - [x] 自訂字型上傳（TTF / OTF / WOFF / WOFF2，最大 20 MB，可在字體選單選用）
@@ -204,6 +204,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | API 文件 | 預設關閉；需明確設定 `ENABLE_API_DOCS=true` 才開放 |
 | 路徑驗證 | 所有檔案操作透過 `validate_filename_safety` + `Path.resolve().relative_to()` 雙重防護 |
 | XSS 防護 | 前端照片卡片 filename 以 HTML escape + `data-*` 屬性 + 事件委派處理，不使用 inline `onclick` |
+| 密碼輸入遮罩 | 改密碼透過頁內 Modal（`type="password"` 欄位）完成，不使用原生 `prompt()`（明碼顯示）|
 | 安全標頭 | `X-Content-Type-Options`、`X-Frame-Options: DENY`、`Referrer-Policy`、`Permissions-Policy`、`Content-Security-Policy`（`frame-ancestors 'none'`）；HTTPS 環境下另加 `Strict-Transport-Security` |
 | 本機限定功能 | `open-incoming-folder` 端點檢查 Host header，非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
@@ -226,4 +227,4 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.4.0 | **更新**: 2026-06-02 | **狀態**: 生產就緒
+**版本**: 0.4.1 | **更新**: 2026-06-02 | **狀態**: 生產就緒

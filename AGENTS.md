@@ -98,6 +98,7 @@ result = await loop.run_in_executor(None, sync_function, arg1, arg2)
 | 2026-06-02 | WebSocket 加入 Session 認證 | 未認證的 WS 端點讓任何人都能監聽展場照片的即時拍攝通知 |
 | 2026-06-02 | 取件碼端點加速率限制 | 防止自動化腳本枚舉取件碼竊取照片 |
 | 2026-06-02 | API Docs 預設關閉 | `/api/docs` 向任何知道 URL 的人暴露完整 API 結構 |
+| 2026-06-02 | 改密碼改用 Modal + `type="password"` | 原 `prompt()` 以明碼顯示密碼輸入；改為頁內 Modal，提供密碼遮罩、確認欄位與前端驗證 |
 
 ---
 
