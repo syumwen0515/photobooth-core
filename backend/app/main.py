@@ -1,7 +1,9 @@
 import asyncio
 import functools
+import io
 import json
 import os
+import re
 import subprocess
 import sys
 import random
@@ -16,6 +18,7 @@ from websockets.exceptions import ConnectionClosedError
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from PIL import Image, ImageOps
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -28,7 +31,7 @@ from app.config import (
     BG_DIR, ACCOUNTS_FILE,
     CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, CORS_ALLOW_METHODS, CORS_ALLOW_HEADERS,
     MAX_FILE_SIZE_BYTES, SUPPORTED_IMAGE_FORMATS,
-    STATIC_INCOMING_ROUTE, STATIC_BG_ROUTE,
+    STATIC_INCOMING_ROUTE, STATIC_BG_ROUTE, STATIC_FONTS_ROUTE,
     API_ADMIN_PREFIX, WS_PHOTO_ROUTE,
     LOG_LEVEL, LOG_FORMAT,
     SESSION_COOKIE_NAME,
@@ -36,6 +39,8 @@ from app.config import (
     NGROK_CONFIG_FILE,
     THUMB_DIR,
     INDEX_TEXT_FILE, INDEX_TEXT_DEFAULTS,
+    FONTS_DIR, FONTS_META_FILE,
+    GOOGLE_FONTS, SUPPORTED_FONT_EXTS, MAX_FONT_SIZE_BYTES,
 )
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
@@ -147,14 +152,43 @@ def _save_line_config(channel_secret: str, channel_access_token: str) -> None:
     )
 
 
-def _load_index_text() -> Dict[str, str]:
-    if INDEX_TEXT_FILE.exists():
+def _load_fonts_meta() -> List[Dict]:
+    if FONTS_META_FILE.exists():
         try:
-            data = json.loads(INDEX_TEXT_FILE.read_text(encoding="utf-8"))
-            return {**INDEX_TEXT_DEFAULTS, **data}
+            return json.loads(FONTS_META_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
-    return dict(INDEX_TEXT_DEFAULTS)
+    return []
+
+
+def _save_fonts_meta(fonts: List[Dict]) -> None:
+    FONTS_META_FILE.write_text(json.dumps(fonts, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_index_text() -> Dict[str, Any]:
+    if INDEX_TEXT_FILE.exists():
+        try:
+            saved = json.loads(INDEX_TEXT_FILE.read_text(encoding="utf-8"))
+            result: Dict[str, Any] = {**INDEX_TEXT_DEFAULTS, **{k: v for k, v in saved.items() if k in INDEX_TEXT_DEFAULTS}}
+        except Exception:
+            result = dict(INDEX_TEXT_DEFAULTS)
+    else:
+        result = dict(INDEX_TEXT_DEFAULTS)
+
+    font = result.get("font", INDEX_TEXT_DEFAULTS["font"])
+    if font in GOOGLE_FONTS:
+        result["font_source"] = "google"
+    else:
+        font_info = next((f for f in _load_fonts_meta() if f["family"] == font), None)
+        if font_info:
+            result["font_source"] = "custom"
+            result["font_file"]   = f"{STATIC_FONTS_ROUTE}/{font_info['filename']}"
+            result["font_format"] = font_info["format"]
+        else:
+            result["font"] = INDEX_TEXT_DEFAULTS["font"]
+            result["font_source"] = "google"
+
+    return result
 
 
 def _save_index_text(data: Dict[str, str]) -> None:
@@ -188,29 +222,26 @@ def _init_line_bot(cfg: Dict[str, str]) -> None:
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: set[WebSocket] = set()
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
-        self.active_connections.append(websocket)
+        self.active_connections.add(websocket)
         logger.info(f"🔗 新 WebSocket 連接 (總連接數: {len(self.active_connections)})")
 
     def disconnect(self, websocket: WebSocket) -> None:
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-            logger.info(f"🔌 WebSocket 斷線 (剩餘: {len(self.active_connections)})")
+        self.active_connections.discard(websocket)
+        logger.info(f"🔌 WebSocket 斷線 (剩餘: {len(self.active_connections)})")
 
     async def broadcast(self, message: Dict[str, Any]) -> None:
-        disconnected = []
+        disconnected: set[WebSocket] = set()
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
             except Exception as e:
                 logger.error(f"⚠️ 廣播失敗: {e}")
-                disconnected.append(connection)
-        for conn in disconnected:
-            if conn in self.active_connections:
-                self.active_connections.remove(conn)
+                disconnected.add(connection)
+        self.active_connections -= disconnected
 
 
 manager = ConnectionManager()
@@ -270,6 +301,7 @@ async def add_security_headers(request: Request, call_next):
 
 app.mount(STATIC_INCOMING_ROUTE, StaticFiles(directory=str(INCOMING_DIR)), name="incoming_photos")
 app.mount(STATIC_BG_ROUTE, StaticFiles(directory=str(BG_DIR)), name="bg")
+app.mount(STATIC_FONTS_ROUTE, StaticFiles(directory=str(FONTS_DIR)), name="fonts")
 
 
 # ==================== Pydantic 模型 ====================
@@ -297,6 +329,7 @@ class IndexTextRequest(BaseModel):
     subtitle: str
     middle_text: str
     font: str
+
 
 
 # ==================== 輔助函數 ====================
@@ -463,6 +496,16 @@ async def delete_account(username: str, pb_session: Optional[str] = Cookie(defau
 
 # ==================== 底圖管理 API ====================
 
+def _process_bg_image(content: bytes) -> tuple[int, int]:
+    img = Image.open(io.BytesIO(content)).convert("RGB")
+    if img.width > 1920:
+        ratio = 1920 / img.width
+        img = img.resize((1920, int(img.height * ratio)), Image.LANCZOS)
+    img.save(str(BG_DIR / "bg.jpg"), "JPEG", quality=82, optimize=True, progressive=True)
+    img.save(str(BG_DIR / "bg.webp"), "WEBP", quality=78, method=6)
+    return img.width, img.height
+
+
 @app.post(f"{API_ADMIN_PREFIX}/upload-bg", tags=["Background"])
 async def upload_bg(file: UploadFile = File(...), pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, str]:
     _require_auth(pb_session)
@@ -475,15 +518,9 @@ async def upload_bg(file: UploadFile = File(...), pb_session: Optional[str] = Co
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=413, detail="檔案超過 50MB 限制")
     try:
-        from PIL import Image
-        import io
-        img = Image.open(io.BytesIO(content)).convert("RGB")
-        if img.width > 1920:
-            ratio = 1920 / img.width
-            img = img.resize((1920, int(img.height * ratio)), Image.LANCZOS)
-        img.save(str(BG_DIR / "bg.jpg"), "JPEG", quality=82, optimize=True, progressive=True)
-        img.save(str(BG_DIR / "bg.webp"), "WEBP", quality=78, method=6)
-        logger.info(f"✓ 首頁底圖已更新 ({img.width}×{img.height})")
+        loop = asyncio.get_running_loop()
+        w, h = await loop.run_in_executor(None, _process_bg_image, content)
+        logger.info(f"✓ 首頁底圖已更新 ({w}×{h})")
         return {"message": "底圖上傳成功", "url": f"{STATIC_BG_ROUTE}/bg.jpg"}
     except Exception as e:
         logger.error(f"底圖處理失敗: {e}")
@@ -519,9 +556,10 @@ async def get_index_text() -> Dict[str, str]:
 @app.post(f"{API_ADMIN_PREFIX}/index-text", tags=["IndexText"])
 async def save_index_text(request: IndexTextRequest, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, str]:
     _require_auth(pb_session)
-    allowed_fonts = {"Noto Sans JP", "Noto Serif JP", "M PLUS Rounded 1c", "Zen Kaku Gothic New", "Shippori Mincho"}
-    if request.font not in allowed_fonts:
-        raise HTTPException(status_code=400, detail="不支援的字體")
+    if request.font not in GOOGLE_FONTS:
+        custom_families = {f["family"] for f in _load_fonts_meta()}
+        if request.font not in custom_families:
+            raise HTTPException(status_code=400, detail="字體不存在")
     data = {
         "main_title": request.main_title[:30],
         "subtitle": request.subtitle[:30],
@@ -530,6 +568,55 @@ async def save_index_text(request: IndexTextRequest, pb_session: Optional[str] =
     }
     _save_index_text(data)
     return {"message": "首頁文字設定已儲存"}
+
+
+# ==================== 自訂字型 API ====================
+
+@app.get("/api/fonts", tags=["Fonts"])
+async def list_fonts_public() -> Dict[str, Any]:
+    return {"fonts": _load_fonts_meta()}
+
+
+@app.post(f"{API_ADMIN_PREFIX}/fonts", tags=["Fonts"])
+async def upload_font(file: UploadFile = File(...), pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, str]:
+    _require_auth(pb_session)
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="請選擇字型檔案")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in SUPPORTED_FONT_EXTS:
+        raise HTTPException(status_code=400, detail="僅支援 TTF / OTF / WOFF / WOFF2 格式")
+    content = await file.read()
+    if len(content) > MAX_FONT_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="字型檔案超過 20MB 限制")
+
+    raw_stem = Path(file.filename).stem
+    safe_family = re.sub(r"[^\w\s\-]", "", raw_stem).strip() or "CustomFont"
+    safe_filename = safe_family + ext
+    (FONTS_DIR / safe_filename).write_bytes(content)
+
+    fonts = [f for f in _load_fonts_meta() if f["filename"] != safe_filename]
+    fonts.append({"family": safe_family, "filename": safe_filename, "format": SUPPORTED_FONT_EXTS[ext]})
+    _save_fonts_meta(fonts)
+    logger.info(f"✓ 自訂字型已上傳: {safe_filename}")
+    return {"message": "字型上傳成功", "family": safe_family, "filename": safe_filename}
+
+
+@app.delete(f"{API_ADMIN_PREFIX}/fonts/{{filename}}", tags=["Fonts"])
+async def delete_font(filename: str, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, str]:
+    _require_auth(pb_session)
+    if not validate_filename_safety(filename):
+        raise HTTPException(status_code=400, detail="無效的檔案名稱")
+    font_path = FONTS_DIR / filename
+    if not font_path.exists():
+        raise HTTPException(status_code=404, detail="找不到字型")
+    try:
+        font_path.resolve().relative_to(FONTS_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="路徑驗證失敗")
+    font_path.unlink()
+    fonts = [f for f in _load_fonts_meta() if f["filename"] != filename]
+    _save_fonts_meta(fonts)
+    return {"message": f"已刪除字型 {filename}"}
 
 
 # ==================== 拍攝照片管理 API ====================
@@ -546,8 +633,16 @@ async def list_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Dic
         raise HTTPException(status_code=500, detail=f"無法取得照片列表: {e}")
 
 
+def _generate_thumbnail(src_path: Path, thumb_path: Path) -> None:
+    img = ImageOps.exif_transpose(Image.open(src_path)).convert("RGB")
+    img.thumbnail((480, 480), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, "WEBP", quality=72, method=4)
+    thumb_path.write_bytes(buf.getvalue())
+
+
 @app.get(f"{API_ADMIN_PREFIX}/incoming/thumb/{{filename}}", tags=["Incoming"])
-async def get_incoming_thumb(filename: str, pb_session: Optional[str] = Cookie(default=None)) -> Response:
+async def get_incoming_thumb(filename: str, pb_session: Optional[str] = Cookie(default=None)) -> FileResponse:
     _require_auth(pb_session)
     if not validate_filename_safety(filename):
         raise HTTPException(status_code=400, detail="無效的檔案名稱")
@@ -562,19 +657,14 @@ async def get_incoming_thumb(filename: str, pb_session: Optional[str] = Cookie(d
     thumb_path = THUMB_DIR / f"{filename}.thumb.webp"
     if not thumb_path.exists():
         try:
-            from PIL import Image, ImageOps
-            import io
-            img = ImageOps.exif_transpose(Image.open(src_path)).convert("RGB")
-            img.thumbnail((480, 480), Image.LANCZOS)
-            buf = io.BytesIO()
-            img.save(buf, "WEBP", quality=72, method=4)
-            thumb_path.write_bytes(buf.getvalue())
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, _generate_thumbnail, src_path, thumb_path)
         except Exception as e:
             logger.error(f"縮圖生成失敗 {filename}: {e}")
             raise HTTPException(status_code=500, detail="縮圖生成失敗")
 
-    return Response(
-        content=thumb_path.read_bytes(),
+    return FileResponse(
+        str(thumb_path),
         media_type="image/webp",
         headers={"Cache-Control": "private, max-age=86400"},
     )
@@ -782,8 +872,12 @@ async def reset_system(pb_session: Optional[str] = Cookie(default=None)) -> Dict
 
     # 刪除拍攝照片與縮圖快取
     try:
-        deleted = sum(1 for p in INCOMING_DIR.iterdir() if p.is_file() and not p.unlink())
-        for t in THUMB_DIR.iterdir():
+        deleted = 0
+        for p in list(INCOMING_DIR.iterdir()):
+            if p.is_file():
+                p.unlink()
+                deleted += 1
+        for t in list(THUMB_DIR.iterdir()):
             if t.is_file():
                 t.unlink()
         results["incoming_photos"] = f"已刪除 {deleted} 張"
@@ -809,6 +903,19 @@ async def reset_system(pb_session: Optional[str] = Cookie(default=None)) -> Dict
         results["index_text"] = "已重置為預設值"
     except Exception as e:
         results["index_text"] = f"失敗: {e}"
+
+    # 清除自訂字型
+    try:
+        cleared = 0
+        for f in FONTS_DIR.iterdir():
+            if f.is_file():
+                f.unlink()
+                cleared += 1
+        if FONTS_META_FILE.exists():
+            FONTS_META_FILE.unlink()
+        results["custom_fonts"] = f"已刪除 {cleared} 個字型" if cleared else "無自訂字型，略過"
+    except Exception as e:
+        results["custom_fonts"] = f"失敗: {e}"
 
     logger.info("✓ 系統已執行重置")
     return {"message": "系統已重置完成", "details": results}

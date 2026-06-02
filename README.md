@@ -8,7 +8,7 @@
 photobooth-core/
 ├── backend/
 │   ├── app/
-│   │   ├── config.py              # 集中式配置管理
+│   │   ├── config.py              # 集中式配置管理（含字型 / 圖片常數）
 │   │   ├── main.py                # FastAPI 主應用（全部路由）
 │   │   ├── watcher.py             # incoming/ 資料夾監聽 → WebSocket 廣播
 │   │   ├── auth.py                # Session 管理
@@ -22,9 +22,11 @@ photobooth-core/
 │   ├── requirements.txt
 │   └── storage/
 │       ├── incoming/              # 相機照片輸入資料夾
-│       ├── bg/                    # 首頁底圖
+│       ├── bg/                    # 首頁底圖（bg.jpg + bg.webp）
 │       ├── thumbs/                # 縮圖快取（480px WebP，按需生成）
+│       ├── fonts/                 # 自訂字型檔案（TTF / OTF / WOFF / WOFF2）
 │       ├── accounts.json
+│       ├── fonts_meta.json        # 自訂字型元資料（按需生成）
 │       ├── line_config.json
 │       ├── ngrok_config.json
 │       ├── photo_codes.json
@@ -68,18 +70,19 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ## 核心功能
 
 ### 已完成
-- [x] 管理員登入 / 登出 / Session 管理
-- [x] 帳號管理（新增 / 刪除 / 改密碼）
-- [x] 首頁底圖上傳 / 刪除
+- [x] 管理員登入 / 登出 / Session 管理（5 次失敗鎖定 10 分鐘）
+- [x] 帳號管理（新增 / 刪除 / 改密碼，密碼最短 8 字元）
+- [x] 首頁底圖上傳 / 刪除（自動輸出 JPEG + WebP 雙格式）
 - [x] 首頁文字客製化（主標題 / 副標題 / 中段文字 / 字體）
+- [x] 自訂字型上傳（TTF / OTF / WOFF / WOFF2，最大 20 MB，可在字體選單選用）
 - [x] 相機照片自動監聽（Watchdog）
-- [x] WebSocket 即時推播到管理後台
-- [x] 取件碼自動指派（6 碼，去除易混淆字元）
+- [x] WebSocket 即時推播到管理後台（連線管理使用 set，斷線移除 O(1)）
+- [x] 取件碼自動指派（6 碼，去除易混淆字元 0/O/1/I）
 - [x] 照片取件頁面（`/download/{code}`）
-- [x] 縮圖快取系統（480px WebP，`storage/thumbs/`，按需生成）
+- [x] 縮圖快取系統（480px WebP，`storage/thumbs/`，按需生成；以 `FileResponse` 串流回傳）
 - [x] LINE BOT 整合（Webhook / 輸入取件碼查詢）
 - [x] ngrok 外網穿透（API + 管理 UI）
-- [x] 系統一鍵重置（清除所有照片、設定、取件碼、首頁文字）
+- [x] 系統一鍵重置（清除所有照片、設定、取件碼、首頁文字、自訂字型）
 - [x] 管理後台「開啟資料夾」快速開啟 incoming 目錄（跨平台；僅本機存取可用，ngrok 等遠端連線自動隱藏按鈕並由後端 403 雙重封鎖）
 - [x] 管理後台重組為 4 個分類 Tab（外觀 / 服務 / 照片 / 系統）
 
@@ -130,6 +133,13 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 |------|------|------|
 | GET | `/api/index-text` | 取得首頁文字設定（公開）|
 | POST | `/api/admin/index-text` | 儲存首頁文字設定 |
+
+### 自訂字型
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| GET | `/api/fonts` | 取得已上傳字型列表（公開）|
+| POST | `/api/admin/fonts` | 上傳字型（TTF / OTF / WOFF / WOFF2，最大 20 MB）|
+| DELETE | `/api/admin/fonts/{filename}` | 刪除字型 |
 
 ### 拍攝照片（incoming）
 | 方法 | 端點 | 說明 |
@@ -183,6 +193,19 @@ PUBLIC_BASE_URL=https://your-domain.com
 NGROK_AUTHTOKEN=your_token_here
 ```
 
+## 安全性設計
+
+| 機制 | 說明 |
+|------|------|
+| Session Cookie | `pb_session`（HttpOnly，7 天 TTL，SameSite=Lax）|
+| 密碼儲存 | SHA-256 + 隨機 salt（16 bytes hex），每帳號獨立 salt |
+| 登入保護 | 同一帳號 10 分鐘內失敗 5 次 → 鎖定 10 分鐘 |
+| 路徑驗證 | 所有檔案操作透過 `validate_filename_safety` + `Path.resolve().relative_to()` 雙重防護 |
+| XSS 防護 | 前端照片卡片 filename 以 HTML escape + `data-*` 屬性 + 事件委派處理，不使用 inline `onclick` |
+| 安全標頭 | `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` |
+| 本機限定功能 | `open-incoming-folder` 端點檢查 Host header，非 localhost 回傳 403 |
+| LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
+
 ## 故障排除
 
 ### 照片沒有推播到管理後台
@@ -202,3 +225,5 @@ NGROK_AUTHTOKEN=your_token_here
 ---
 
 **版本**: 0.4.0 | **更新**: 2026-06-02 | **狀態**: 生產就緒
+
+> 最近更新：自訂字型上傳、PIL 非同步化（run_in_executor）、縮圖 FileResponse 串流、WebSocket set 連線管理、XSS 防護強化。

@@ -66,6 +66,8 @@ PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
 NGROK_CONFIG_FILE = STORAGE_DIR / "ngrok_config.json"
 
 THUMB_DIR = STORAGE_DIR / "thumbs"
+FONTS_DIR  = STORAGE_DIR / "fonts"
+FONTS_META_FILE = STORAGE_DIR / "fonts_meta.json"
 
 # 首頁文字設定
 INDEX_TEXT_FILE = STORAGE_DIR / "index_text.json"
@@ -76,5 +78,25 @@ INDEX_TEXT_DEFAULTS = {
     "font": "Noto Sans JP",
 }
 
-for directory in [BG_DIR, THUMB_DIR]:
+# 靜態字型路由
+STATIC_FONTS_ROUTE = "/static/fonts"
+
+# Google 字型清單（與前端 admin.html 的 optgroup 保持同步）
+GOOGLE_FONTS = {
+    "Noto Sans JP", "Noto Serif JP", "M PLUS Rounded 1c",
+    "Zen Kaku Gothic New", "Shippori Mincho",
+}
+
+# 自訂字型支援格式
+SUPPORTED_FONT_EXTS: dict[str, str] = {
+    ".ttf": "truetype",
+    ".otf": "opentype",
+    ".woff": "woff",
+    ".woff2": "woff2",
+}
+
+# 字型檔案上傳大小限制
+MAX_FONT_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
+
+for directory in [BG_DIR, THUMB_DIR, FONTS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)

@@ -207,7 +207,7 @@
     const supportsWebP = canvas.toDataURL('image/webp').startsWith('data:image/webp');
     loadBg(supportsWebP ? '/static/bg/bg.webp?' + ts : '/static/bg/bg.jpg?' + ts);
 
-    const FONT_QUERY_MAP = {
+    const GOOGLE_FONT_QUERY = {
         'Noto Sans JP':        'Noto+Sans+JP:wght@100;200;300;400',
         'Noto Serif JP':       'Noto+Serif+JP:wght@200;300;400',
         'M PLUS Rounded 1c':   'M+PLUS+Rounded+1c:wght@100;200;300;400',
@@ -215,25 +215,34 @@
         'Shippori Mincho':     'Shippori+Mincho:wght@400;500;600',
     };
 
-    function applyFont(fontName) {
-        const query = FONT_QUERY_MAP[fontName];
-        if (!query || fontName === 'Noto Sans JP') return;
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://fonts.googleapis.com/css2?family=' + query + '&display=swap';
-        document.head.appendChild(link);
-        document.body.style.fontFamily = "'" + fontName + "', sans-serif";
+    function applyFont(data) {
+        const { font, font_source, font_file, font_format } = data;
+        if (!font) return;
+        if (font_source === 'custom' && font_file) {
+            const style = document.createElement('style');
+            style.textContent = "@font-face{font-family:'" + font + "';src:url('" + font_file + "') format('" + font_format + "');font-display:swap;}";
+            document.head.appendChild(style);
+            document.body.style.fontFamily = "'" + font + "', sans-serif";
+        } else if (font_source === 'google' && font !== 'Noto Sans JP') {
+            const query = GOOGLE_FONT_QUERY[font];
+            if (!query) return;
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://fonts.googleapis.com/css2?family=' + query + '&display=swap';
+            document.head.appendChild(link);
+            document.body.style.fontFamily = "'" + font + "', sans-serif";
+        }
     }
 
     fetch('/api/index-text').then(r => r.ok ? r.json() : null).then(data => {
         if (!data) return;
-        const mainEl   = document.getElementById('idx-main-title');
-        const subEl    = document.getElementById('idx-subtitle');
-        const midEl    = document.getElementById('idx-middle-text');
+        const mainEl = document.getElementById('idx-main-title');
+        const subEl  = document.getElementById('idx-subtitle');
+        const midEl  = document.getElementById('idx-middle-text');
         if (data.main_title  && mainEl) mainEl.textContent = data.main_title;
         if (data.subtitle    && subEl)  subEl.textContent  = data.subtitle;
         if (data.middle_text && midEl)  midEl.textContent  = data.middle_text;
-        if (data.font) applyFont(data.font);
+        applyFont(data);
     }).catch(() => {});
 </script>
 </body>

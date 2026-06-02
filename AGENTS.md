@@ -45,8 +45,19 @@
 ### 第五階段：外觀客製化 ✅
 - [x] 首頁文字客製化（主標題 / 副標題 / 中段文字）— `GET /api/index-text`、`POST /api/admin/index-text`
 - [x] 字體選擇（Noto Sans JP / Noto Serif JP / M PLUS Rounded 1c / Zen Kaku Gothic New / Shippori Mincho）
+- [x] 自訂字型上傳（TTF / OTF / WOFF / WOFF2，存入 `storage/fonts/`，元資料寫入 `fonts_meta.json`）
 - [x] 首頁動態載入文字設定（JS fetch，支援重置恢復預設）
 - [x] 管理後台 Tab 重組（外觀 / 服務 / 照片 / 系統）
+
+### 第六階段：系統強化 ✅
+- [x] **安全 — XSS 修復**：`renderIncomingCard` 中 filename 改以 HTML 轉義 + `data-filename` + 事件委派取代 inline `onclick`
+- [x] **安全 — 密碼長度提示**：`changePassword` 的 `prompt` 文字統一修正為「至少 8 個字元」（與 auth.py 規則一致）
+- [x] **效能 — 縮圖 FileResponse**：`get_incoming_thumb` 改用 `FileResponse` 取代 `Response(content=read_bytes())`，避免整檔載入記憶體
+- [x] **效能 — PIL 非同步化**：縮圖生成（`_generate_thumbnail`）及底圖上傳（`_process_bg_image`）拆成同步 helper，以 `run_in_executor` 執行，不再阻塞 asyncio 事件迴圈
+- [x] **品質 — 常數集中至 config.py**：`GOOGLE_FONTS`、`SUPPORTED_FONT_EXTS`、`MAX_FONT_SIZE_BYTES` 從 main.py 移至 config.py
+- [x] **品質 — WebSocket 連線改用 set**：`ConnectionManager.active_connections` 由 `list` 改為 `set`，斷線移除從 O(n) 降至 O(1)
+- [x] **品質 — PIL 頂層 import**：`from PIL import Image, ImageOps` 與 `import io` 移至模組頂層
+- [x] **品質 — 重置邏輯可讀性**：`reset_system` 中 `not p.unlink()` 取巧計數改為明確 for 迴圈，加 `list()` 避免迭代期間刪除的問題
 
 ### 決策記錄
 
@@ -57,6 +68,9 @@
 | 2026-06-02 | 移除 borders/ 目錄與邊框 API | 同上，取消合成功能 |
 | 2026-06-02 | 移除 2×3/2×4 版型功能 | 簡化流程，不需多版型選片 |
 | 2026-06-02 | 移除 final 照片 API 與 storage/final/ | 合成功能已移除，FINAL_DIR 從未被寫入，屬於死碼 |
+| 2026-06-02 | PIL 圖片處理改用 run_in_executor | PIL 是 CPU 密集操作，在 async 函數中直接呼叫會阻塞整個事件迴圈，影響 WebSocket 推播 |
+| 2026-06-02 | WebSocket ConnectionManager 改用 set | list 的 remove 是 O(n)，在多連線高頻廣播場景下有效能損耗；set.discard 為 O(1) |
+| 2026-06-02 | 設定常數（GOOGLE_FONTS 等）集中至 config.py | main.py 中與邏輯無關的純設定值應統一由 config.py 管理，便於日後擴充與版本同步 |
 
 ## 目前檔案結構
 
@@ -78,7 +92,9 @@ backend/storage/
 ├── incoming/        # 相機照片輸入（Watchdog 監聽）
 ├── bg/              # 首頁底圖
 ├── thumbs/          # 縮圖快取（480px WebP，按需生成）
+├── fonts/           # 自訂字型檔案（TTF / OTF / WOFF / WOFF2）
 ├── accounts.json
+├── fonts_meta.json  # 自訂字型元資料（family / filename / format）
 ├── line_config.json
 ├── ngrok_config.json
 ├── photo_codes.json

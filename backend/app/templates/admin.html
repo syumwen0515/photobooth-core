@@ -135,6 +135,38 @@
             </div>
         </div>
 
+        <!-- ▸ 自訂字型 -->
+        <div class="bg-white rounded-xl border border-wa-light overflow-hidden">
+            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 hover:bg-wa-cream/60 transition-colors"
+                    data-acc="customfonts">
+                <div class="flex items-center gap-3">
+                    <span class="text-base font-light text-wa-gray">自訂字型</span>
+                    <span class="text-xs text-wa-blue font-light">上傳本地字型檔案</span>
+                </div>
+                <svg class="acc-arrow w-4 h-4 text-wa-blue" data-acc="customfonts"
+                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                </svg>
+            </button>
+            <div class="acc-body" id="acc-customfonts">
+                <div class="px-5 pb-5 space-y-4 border-t border-wa-light">
+                    <div class="pt-4 space-y-3">
+                        <div id="customFontList" class="space-y-2">
+                            <div class="text-xs text-wa-blue/60 font-light">載入中…</div>
+                        </div>
+                        <div class="flex items-center gap-3 flex-wrap pt-1">
+                            <label id="fontUploadLabel" class="cursor-pointer px-4 py-1.5 bg-wa-blue text-white text-xs font-light rounded hover:bg-wa-blue/90 transition-all active:scale-95">
+                                上傳字型
+                                <input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" class="hidden" onchange="uploadFont(this)">
+                            </label>
+                            <span id="fontUploadMsg" class="text-xs font-light text-wa-blue hidden"></span>
+                        </div>
+                        <p class="text-xs text-wa-blue/60 font-light">支援 TTF / OTF / WOFF / WOFF2，上傳後可在「首頁文字」字體選單中選用。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- ▸ 首頁文字 -->
         <div class="bg-white rounded-xl border border-wa-light overflow-hidden">
             <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 hover:bg-wa-cream/60 transition-colors"
@@ -170,11 +202,14 @@
                             <label class="block text-xs text-wa-blue font-light mb-1">字體</label>
                             <select id="idxFont"
                                     class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue">
-                                <option value="Noto Sans JP">Noto Sans JP — 現代無襯線</option>
-                                <option value="Noto Serif JP">Noto Serif JP — 典雅有襯線</option>
-                                <option value="M PLUS Rounded 1c">M PLUS Rounded 1c — 圓體</option>
-                                <option value="Zen Kaku Gothic New">Zen Kaku Gothic New — 方形現代</option>
-                                <option value="Shippori Mincho">Shippori Mincho — 傳統明朝</option>
+                                <optgroup label="Google 字型">
+                                    <option value="Noto Sans JP">Noto Sans JP — 現代無襯線</option>
+                                    <option value="Noto Serif JP">Noto Serif JP — 典雅有襯線</option>
+                                    <option value="M PLUS Rounded 1c">M PLUS Rounded 1c — 圓體</option>
+                                    <option value="Zen Kaku Gothic New">Zen Kaku Gothic New — 方形現代</option>
+                                    <option value="Shippori Mincho">Shippori Mincho — 傳統明朝</option>
+                                </optgroup>
+                                <optgroup label="自訂字型" id="customFontOptgroup"></optgroup>
                             </select>
                         </div>
                         <div class="flex items-center gap-2">
@@ -469,6 +504,10 @@
     }
 
     // ── Incoming photos ────────────────────────────────────
+    function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
     async function loadIncoming() {
         const grid = document.getElementById('incomingGrid');
         try {
@@ -491,23 +530,30 @@
 
     function renderIncomingCard(filename, code) {
         const codeDisplay = code || '—';
+        const safe = escHtml(filename);
         return `
             <div id="inc-${CSS.escape(filename)}" class="bg-white rounded-lg border border-wa-light overflow-hidden">
                 <div class="w-full aspect-square bg-wa-light overflow-hidden">
-                    <img src="/api/admin/incoming/thumb/${encodeURIComponent(filename)}" class="w-full h-full object-cover" alt="${filename}" loading="lazy">
+                    <img src="/api/admin/incoming/thumb/${encodeURIComponent(filename)}" class="w-full h-full object-cover" alt="${safe}" loading="lazy">
                 </div>
                 <div class="p-2.5 space-y-2">
                     <div class="flex items-center justify-between bg-wa-cream rounded px-2.5 py-1.5">
                         <span class="text-xs text-wa-blue font-light">取件碼</span>
                         <span class="font-mono text-base font-medium tracking-[0.2em] text-wa-gray select-all">${codeDisplay}</span>
                     </div>
-                    <button onclick="deleteIncomingPhoto('${filename}')"
-                            class="w-full py-1 text-xs font-light rounded text-wa-gray hover:text-red-500 hover:bg-red-50 transition-all">
+                    <button data-filename="${safe}"
+                            class="del-btn w-full py-1 text-xs font-light rounded text-wa-gray hover:text-red-500 hover:bg-red-50 transition-all">
                         刪除
                     </button>
                 </div>
             </div>`;
     }
+
+    // 事件委派：避免在 innerHTML 中使用 inline onclick（XSS 防護）
+    document.getElementById('incomingGrid').addEventListener('click', (e) => {
+        const btn = e.target.closest('.del-btn');
+        if (btn) deleteIncomingPhoto(btn.dataset.filename);
+    });
 
     function prependIncomingCard(filename, code) {
         const grid  = document.getElementById('incomingGrid');
@@ -814,13 +860,87 @@
     }
 
     async function changePassword(username) {
-        const pw = prompt(`請輸入帳號「${username}」的新密碼（至少 4 個字元）：`);
+        const pw = prompt(`請輸入帳號「${username}」的新密碼（至少 8 個字元）：`);
         if (!pw) return;
         try {
             await axios.put(`${API_URL}/api/admin/accounts/${encodeURIComponent(username)}/password`, { new_password: pw });
             alert('密碼已更新');
         } catch (err) {
             alert('更新失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+        }
+    }
+
+    // ── Custom Fonts ───────────────────────────────────────
+    async function loadCustomFonts() {
+        try {
+            const res   = await axios.get(`${API_URL}/api/fonts`);
+            const fonts = res.data.fonts || [];
+            const listEl    = document.getElementById('customFontList');
+            const optgroup  = document.getElementById('customFontOptgroup');
+
+            // Rebuild font list in accordion
+            listEl.innerHTML = '';
+            if (fonts.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'text-xs text-wa-blue/60 font-light';
+                empty.textContent = '尚未上傳字型';
+                listEl.appendChild(empty);
+            } else {
+                fonts.forEach(f => {
+                    const ext = f.filename.split('.').pop().toUpperCase();
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center justify-between rounded-lg border border-wa-light px-3 py-2';
+                    const info = document.createElement('div');
+                    info.className = 'flex items-center gap-2';
+                    info.innerHTML = `<span class="text-sm font-light text-wa-gray">${f.family}</span><span class="text-xs text-wa-blue/50 font-light">.${ext}</span>`;
+                    const btn = document.createElement('button');
+                    btn.className = 'px-2 py-0.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-red-300 hover:text-red-400 transition-all';
+                    btn.textContent = '刪除';
+                    btn.addEventListener('click', () => deleteCustomFont(f.filename, f.family));
+                    row.appendChild(info);
+                    row.appendChild(btn);
+                    listEl.appendChild(row);
+                });
+            }
+
+            // Rebuild optgroup in font selector
+            optgroup.innerHTML = fonts.map(f => `<option value="${f.family}">${f.family}</option>`).join('');
+        } catch (_) {}
+    }
+
+    async function uploadFont(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const label  = document.getElementById('fontUploadLabel');
+        const msg    = document.getElementById('fontUploadMsg');
+        const formData = new FormData();
+        formData.append('file', file);
+        label.style.pointerEvents = 'none';
+        label.style.opacity = '0.6';
+        try {
+            await axios.post(`${API_URL}/api/admin/fonts`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            await loadCustomFonts();
+            msg.textContent = '✓ 上傳成功';
+            msg.classList.remove('hidden');
+            setTimeout(() => msg.classList.add('hidden'), 3000);
+        } catch (err) {
+            alert('上傳失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+        } finally {
+            label.style.pointerEvents = '';
+            label.style.opacity = '';
+            input.value = '';
+        }
+    }
+
+    async function deleteCustomFont(filename, family) {
+        if (!confirm(`確定要刪除字型「${family}」？`)) return;
+        try {
+            await axios.delete(`${API_URL}/api/admin/fonts/${encodeURIComponent(filename)}`);
+            await loadCustomFonts();
+        } catch (err) {
+            alert('刪除失敗: ' + (err.response?.data?.detail || '未知錯誤'));
         }
     }
 
@@ -869,6 +989,7 @@
             loadIncoming();
             loadLineConfig();
             loadBgStatus();
+            await loadCustomFonts();
             loadIndexText();
         } catch (err) {
             alert('重置失敗: ' + (err.response?.data?.detail || '未知錯誤'));
@@ -901,6 +1022,7 @@
         loadLineConfig();
         loadBgStatus();
         loadAccounts();
+        await loadCustomFonts();
         loadIndexText();
         connectWebSocket();
     });
