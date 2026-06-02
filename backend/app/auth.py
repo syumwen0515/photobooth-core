@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import secrets
@@ -9,10 +10,11 @@ _ACCOUNTS_FILE: Optional[Path] = None
 _SESSION_TTL_HOURS = 24 * 7  # 7 天
 _sessions: dict = {}
 
-# 登入失敗次數限制：同一帳號 10 分鐘內超過 5 次失敗則鎖定
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_LOCKOUT_MINUTES = 10
 _failed_logins: dict = {}  # username → {"count": int, "first_at": datetime}
+
+_PBKDF2_ITERATIONS = 260_000
 
 
 def init(accounts_file: Path) -> None:
@@ -21,9 +23,46 @@ def init(accounts_file: Path) -> None:
     _ensure_default_account()
 
 
-def _hash_password(password: str, salt: str) -> str:
+# ── 密碼雜湊（PBKDF2-HMAC-SHA256，向下相容舊 SHA-256）──────────
+
+def _hash_password_pbkdf2(password: str, salt: str) -> str:
+    dk = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt.encode("utf-8"), _PBKDF2_ITERATIONS
+    )
+    return base64.b64encode(dk).decode("ascii")
+
+
+def _hash_password_sha256(password: str, salt: str) -> str:
     return hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
 
+
+def _hash_password(password: str, salt: str) -> str:
+    return _hash_password_pbkdf2(password, salt)
+
+
+def _verify_password(password: str, account: dict) -> bool:
+    algo = account.get("algo", "sha256")
+    if algo == "pbkdf2":
+        return account["password_hash"] == _hash_password_pbkdf2(password, account["salt"])
+    # 舊 SHA-256 帳號：驗證成功後自動升級
+    if account["password_hash"] == _hash_password_sha256(password, account["salt"]):
+        return True
+    return False
+
+
+def _upgrade_to_pbkdf2(username: str, password: str) -> None:
+    """舊 SHA-256 帳號登入成功後，靜默升級為 PBKDF2。"""
+    accounts = _load_accounts()
+    for acc in accounts:
+        if acc["username"] == username and acc.get("algo", "sha256") == "sha256":
+            acc["salt"] = secrets.token_hex(16)
+            acc["password_hash"] = _hash_password_pbkdf2(password, acc["salt"])
+            acc["algo"] = "pbkdf2"
+            _save_accounts(accounts)
+            return
+
+
+# ── 帳號持久化 ───────────────────────────────────────────────
 
 def _load_accounts() -> list:
     if not _ACCOUNTS_FILE or not _ACCOUNTS_FILE.exists():
@@ -45,10 +84,13 @@ def _ensure_default_account() -> None:
         salt = secrets.token_hex(16)
         _save_accounts([{
             "username": "admin",
-            "password_hash": _hash_password("admin", salt),
+            "password_hash": _hash_password_pbkdf2("admin", salt),
             "salt": salt,
+            "algo": "pbkdf2",
         }])
 
+
+# ── 登入失敗鎖定 ─────────────────────────────────────────────
 
 def _is_locked_out(username: str) -> bool:
     record = _failed_logins.get(username)
@@ -77,8 +119,11 @@ def verify_credentials(username: str, password: str) -> bool:
         return False
     for acc in _load_accounts():
         if acc["username"] == username:
-            if acc["password_hash"] == _hash_password(password, acc["salt"]):
+            if _verify_password(password, acc):
                 _clear_failed_logins(username)
+                # 舊帳號靜默升級
+                if acc.get("algo", "sha256") == "sha256":
+                    _upgrade_to_pbkdf2(username, password)
                 return True
             _record_failed_login(username)
             return False
@@ -89,6 +134,8 @@ def verify_credentials(username: str, password: str) -> bool:
 def is_account_locked(username: str) -> bool:
     return _is_locked_out(username)
 
+
+# ── Session 管理 ─────────────────────────────────────────────
 
 def create_session(username: str) -> str:
     token = secrets.token_urlsafe(32)
@@ -110,6 +157,17 @@ def destroy_session(token: str) -> None:
     _sessions.pop(token, None)
 
 
+def cleanup_expired_sessions() -> int:
+    """清理過期 session，回傳清除數量。"""
+    cutoff = datetime.now() - timedelta(hours=_SESSION_TTL_HOURS)
+    expired = [t for t, s in _sessions.items() if s["created_at"] < cutoff]
+    for t in expired:
+        del _sessions[t]
+    return len(expired)
+
+
+# ── 帳號 CRUD ────────────────────────────────────────────────
+
 def get_accounts() -> list[str]:
     return [a["username"] for a in _load_accounts()]
 
@@ -125,8 +183,9 @@ def add_account(username: str, password: str) -> tuple[bool, str]:
     salt = secrets.token_hex(16)
     accounts.append({
         "username": username,
-        "password_hash": _hash_password(password, salt),
+        "password_hash": _hash_password_pbkdf2(password, salt),
         "salt": salt,
+        "algo": "pbkdf2",
     })
     _save_accounts(accounts)
     return True, "帳號新增成功"
@@ -150,7 +209,8 @@ def change_password(username: str, new_password: str) -> tuple[bool, str]:
     for acc in accounts:
         if acc["username"] == username:
             acc["salt"] = secrets.token_hex(16)
-            acc["password_hash"] = _hash_password(new_password, acc["salt"])
+            acc["password_hash"] = _hash_password_pbkdf2(new_password, acc["salt"])
+            acc["algo"] = "pbkdf2"
             _save_accounts(accounts)
             return True, "密碼已更新"
     return False, "帳號不存在"

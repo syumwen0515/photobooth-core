@@ -8,10 +8,10 @@
 photobooth-core/
 ├── backend/
 │   ├── app/
-│   │   ├── config.py              # 集中式配置管理（含字型 / 圖片常數）
+│   │   ├── config.py              # 集中式配置管理（含字型 / 圖片 / 安全常數）
 │   │   ├── main.py                # FastAPI 主應用（全部路由）
 │   │   ├── watcher.py             # incoming/ 資料夾監聽 → WebSocket 廣播
-│   │   ├── auth.py                # Session 管理
+│   │   ├── auth.py                # Session 管理、PBKDF2 密碼雜湊
 │   │   ├── ngrok_manager.py       # pyngrok 隧道控制
 │   │   ├── line_bot.py            # LINE Webhook 處理
 │   │   └── templates/
@@ -34,7 +34,8 @@ photobooth-core/
 ├── python/                        # 內嵌 Python 執行環境
 ├── first_run_setup.bat            # 首次安裝：設定 pip + 安裝依賴 + 可選清除舊資料
 ├── start.bat
-└── AGENTS.md                      # 開發進度追蹤
+├── AGENTS.md                      # AI 代理開發指引
+└── README.md
 ```
 
 ## 快速開始
@@ -53,8 +54,8 @@ pip install -r requirements.txt
 
 ### 運行伺服器
 ```bash
-# 開發模式 (自動重載)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# 開發模式（自動重載，同時開放 API 文件）
+ENABLE_API_DOCS=true uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # 生產模式
 uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -63,9 +64,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 或直接執行 `start.bat`。
 
 ### 訪問應用
-- **管理後台**: http://localhost:8000/admin
-- **API 文檔**: http://localhost:8000/api/docs
+- **公開首頁**: http://localhost:8000
+- **管理後台**: http://localhost:8000/admin（預設帳密：`admin / admin`，請立即修改）
 - **健康檢查**: http://localhost:8000/api
+- **API 文件**: 預設關閉，需設定 `ENABLE_API_DOCS=true` 後訪問 `/api/docs`
 
 ## 核心功能
 
@@ -126,7 +128,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 |------|------|------|
 | POST | `/api/admin/upload-bg` | 上傳底圖 |
 | DELETE | `/api/admin/bg` | 刪除底圖 |
-| GET | `/api/admin/bg-status` | 底圖狀態 |
+| GET | `/api/admin/bg-status` | 底圖狀態（需登入） |
 
 ### 首頁文字
 | 方法 | 端點 | 說明 |
@@ -169,40 +171,40 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ### 照片取件
 | 方法 | 端點 | 說明 |
 |------|------|------|
-| GET | `/download/{code}` | 取件頁面 |
-| GET | `/api/photo/{code}` | 取得照片檔案（?dl=1 強制下載）|
+| GET | `/download/{code}` | 取件頁面（速率限制：30 次/分/IP）|
+| GET | `/api/photo/{code}` | 取得照片檔案（?dl=1 強制下載；速率限制同上）|
 
 ### 即時通訊
 | 方法 | 端點 | 說明 |
 |------|------|------|
-| WS | `/ws/photos` | 新照片即時推播 |
+| WS | `/ws/photos` | 新照片即時推播（需登入）|
 
 ## 環境變數
 
-```bash
-# CORS 設定（多個來源用逗號分隔）
-CORS_ORIGINS=http://localhost:3000,http://example.com
-
-# 日誌等級 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-LOG_LEVEL=INFO
-
-# 固定公開網址（ngrok 未啟用時使用）
-PUBLIC_BASE_URL=https://your-domain.com
-
-# ngrok Auth Token（優先序高於管理後台設定）
-NGROK_AUTHTOKEN=your_token_here
-```
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `SECURE_COOKIES` | `false` | 設為 `true` 時 Session Cookie 加上 `Secure` flag，透過 ngrok HTTPS 部署時必須啟用 |
+| `ENABLE_API_DOCS` | `false` | 設為 `true` 開放 `/api/docs`、`/api/redoc`、`/api/openapi.json` |
+| `CORS_ORIGINS` | 空（不允許跨來源） | 逗號分隔的允許來源，例如 `https://example.ngrok.io` |
+| `PUBLIC_BASE_URL` | 空 | 未使用 ngrok 時的固定公開網址 |
+| `NGROK_AUTHTOKEN` | — | ngrok Auth Token（優先序高於後台儲存的 Token）|
+| `LOG_LEVEL` | `INFO` | 日誌等級：`DEBUG` / `INFO` / `WARNING` / `ERROR` |
+| `RELOAD_ADMIN_HTML` | `false` | 設為 `true` 停用 HTML 快取（開發用）|
 
 ## 安全性設計
 
 | 機制 | 說明 |
 |------|------|
-| Session Cookie | `pb_session`（HttpOnly，7 天 TTL，SameSite=Lax）|
-| 密碼儲存 | SHA-256 + 隨機 salt（16 bytes hex），每帳號獨立 salt |
+| 密碼雜湊 | **PBKDF2-HMAC-SHA256**（260,000 rounds + 隨機 salt）；舊 SHA-256 帳號於下次登入時自動靜默升級 |
+| Session Cookie | `pb_session`（HttpOnly、SameSite=Lax、7 天 TTL；`SECURE_COOKIES=true` 時加上 Secure flag）|
+| Session 清理 | 服務啟動後每小時自動清理過期 session，防止記憶體無限成長 |
 | 登入保護 | 同一帳號 10 分鐘內失敗 5 次 → 鎖定 10 分鐘 |
+| 速率限制 | 取件碼端點（`/download/{code}`、`/api/photo/{code}`）每個 IP 每分鐘最多 30 次，超過回傳 429 |
+| WebSocket 認證 | `/ws/photos` 連線時驗證 Session Cookie，未登入者返回 1008 Policy Violation |
+| API 文件 | 預設關閉；需明確設定 `ENABLE_API_DOCS=true` 才開放 |
 | 路徑驗證 | 所有檔案操作透過 `validate_filename_safety` + `Path.resolve().relative_to()` 雙重防護 |
 | XSS 防護 | 前端照片卡片 filename 以 HTML escape + `data-*` 屬性 + 事件委派處理，不使用 inline `onclick` |
-| 安全標頭 | `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` |
+| 安全標頭 | `X-Content-Type-Options`、`X-Frame-Options: DENY`、`Referrer-Policy`、`Permissions-Policy`、`Content-Security-Policy`（`frame-ancestors 'none'`）；HTTPS 環境下另加 `Strict-Transport-Security` |
 | 本機限定功能 | `open-incoming-folder` 端點檢查 Host header，非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
 
@@ -211,19 +213,17 @@ NGROK_AUTHTOKEN=your_token_here
 ### 照片沒有推播到管理後台
 1. 確認 WebSocket 連線正常（瀏覽器 DevTools → Network → WS）
 2. 確認 `storage/incoming/` 資料夾有讀寫權限
-3. 調高日誌等級：`LOG_LEVEL=DEBUG`
-
-### WebSocket 連接失敗
-1. 確認防火牆未擋 8000 port
-2. 查看伺服器日誌
+3. 確認管理員已登入（WebSocket 現在需要 Session）
+4. 調高日誌等級：`LOG_LEVEL=DEBUG`
 
 ### LINE BOT 無法收到訊息
 1. 確認 ngrok 隧道已啟動
-2. 在 LINE Developers Console 設定 Webhook URL 為 `管理後台顯示的 Webhook URL`
+2. 在 LINE Developers Console 設定 Webhook URL 為管理後台顯示的網址
 3. 啟用 Use webhook 選項
+
+### ngrok HTTPS 環境下 Cookie 失效
+設定環境變數 `SECURE_COOKIES=true` 再重啟伺服器。
 
 ---
 
 **版本**: 0.4.0 | **更新**: 2026-06-02 | **狀態**: 生產就緒
-
-> 最近更新：自訂字型上傳、PIL 非同步化（run_in_executor）、縮圖 FileResponse 串流、WebSocket set 連線管理、XSS 防護強化。

@@ -8,6 +8,8 @@ import subprocess
 import sys
 import random
 import logging
+import time
+from collections import defaultdict
 from urllib.parse import quote
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -41,10 +43,37 @@ from app.config import (
     INDEX_TEXT_FILE, INDEX_TEXT_DEFAULTS,
     FONTS_DIR, FONTS_META_FILE,
     GOOGLE_FONTS, SUPPORTED_FONT_EXTS, MAX_FONT_SIZE_BYTES,
+    SECURE_COOKIES, ENABLE_API_DOCS,
 )
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
+
+
+# ── IP 速率限制（防止暴力枚舉取件碼）───────────────────────────
+_code_request_log: Dict[str, List[float]] = defaultdict(list)
+_CODE_RATE_LIMIT = 30   # 每個 IP 每分鐘最多 30 次
+_CODE_RATE_WINDOW = 60  # 秒
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_code_rate_limit(ip: str) -> bool:
+    now = time.monotonic()
+    cutoff = now - _CODE_RATE_WINDOW
+    log = _code_request_log[ip]
+    # 清理舊紀錄
+    _code_request_log[ip] = [t for t in log if t > cutoff]
+    if len(_code_request_log[ip]) >= _CODE_RATE_LIMIT:
+        return False
+    _code_request_log[ip].append(now)
+    return True
+
 
 # ── 取件碼字元表（移除易混淆字元 0/O/1/I）───────────────────
 _CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -249,6 +278,15 @@ manager = ConnectionManager()
 
 # ==================== 應用程式生命週期 ====================
 
+async def _session_cleanup_task() -> None:
+    """每小時清理一次過期 session，防止記憶體無限成長。"""
+    while True:
+        await asyncio.sleep(3600)
+        removed = auth.cleanup_expired_sessions()
+        if removed:
+            logger.info(f"✓ 已清理 {removed} 個過期 session")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     auth.init(ACCOUNTS_FILE)
@@ -259,8 +297,10 @@ async def lifespan(app: FastAPI):
         _init_line_bot(line_cfg)
     loop = asyncio.get_running_loop()
     app.state.observer = start_watcher(INCOMING_DIR, manager, loop, code_assigner=_assign_code)
+    app.state.cleanup_task = loop.create_task(_session_cleanup_task())
     logger.info("✓ 拍貼機服務啟動完成")
     yield
+    app.state.cleanup_task.cancel()
     if hasattr(app.state, "observer") and app.state.observer:
         app.state.observer.stop()
         app.state.observer.join()
@@ -275,9 +315,9 @@ app = FastAPI(
     title=APP_TITLE,
     version=APP_VERSION,
     description=APP_DESCRIPTION,
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
+    docs_url="/api/docs" if ENABLE_API_DOCS else None,
+    redoc_url="/api/redoc" if ENABLE_API_DOCS else None,
+    openapi_url="/api/openapi.json" if ENABLE_API_DOCS else None,
     lifespan=lifespan,
 )
 
@@ -297,6 +337,12 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # 防止 base-tag 劫持、禁止嵌入 object/embed、禁止 framing（比 X-Frame-Options 更現代）
+    response.headers["Content-Security-Policy"] = (
+        "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+    )
+    if SECURE_COOKIES:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 app.mount(STATIC_INCOMING_ROUTE, StaticFiles(directory=str(INCOMING_DIR)), name="incoming_photos")
@@ -393,6 +439,10 @@ async def get_admin_page(pb_session: Optional[str] = Cookie(default=None)) -> Re
 
 @app.websocket(WS_PHOTO_ROUTE)
 async def websocket_endpoint(websocket: WebSocket) -> None:
+    pb_session = websocket.cookies.get(SESSION_COOKIE_NAME)
+    if not auth.validate_session(pb_session):
+        await websocket.close(code=1008)  # Policy Violation
+        return
     await manager.connect(websocket)
     try:
         while True:
@@ -437,6 +487,7 @@ async def login(request: LoginRequest, response: Response) -> Dict[str, str]:
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
+        secure=SECURE_COOKIES,
         samesite="lax",
         max_age=7 * 24 * 3600,
     )
@@ -541,7 +592,8 @@ async def delete_bg(pb_session: Optional[str] = Cookie(default=None)) -> Dict[st
 
 
 @app.get(f"{API_ADMIN_PREFIX}/bg-status", tags=["Background"])
-async def get_bg_status() -> Dict[str, Any]:
+async def get_bg_status(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
+    _require_auth(pb_session)
     bg_path = BG_DIR / "bg.jpg"
     return {"exists": bg_path.exists(), "url": f"{STATIC_BG_ROUTE}/bg.jpg" if bg_path.exists() else None}
 
@@ -810,7 +862,9 @@ async def save_line_config(request: LineConfigRequest, pb_session: Optional[str]
 # ==================== 照片取件頁面 ====================
 
 @app.get("/download/{code}", tags=["Photo Pickup"])
-async def photo_download_page(code: str) -> HTMLResponse:
+async def photo_download_page(code: str, request: Request) -> HTMLResponse:
+    if not _check_code_rate_limit(_get_client_ip(request)):
+        raise HTTPException(status_code=429, detail="請求過於頻繁，請稍後再試")
     code = code.strip().upper()
     filename = _lookup_code(code)
     if not filename or not (INCOMING_DIR / filename).exists():
@@ -821,7 +875,9 @@ async def photo_download_page(code: str) -> HTMLResponse:
 
 
 @app.get("/api/photo/{code}", tags=["Photo Pickup"])
-async def serve_photo(code: str, dl: int = 0) -> FileResponse:
+async def serve_photo(code: str, request: Request, dl: int = 0) -> FileResponse:
+    if not _check_code_rate_limit(_get_client_ip(request)):
+        raise HTTPException(status_code=429, detail="請求過於頻繁，請稍後再試")
     code = code.strip().upper()
     filename = _lookup_code(code)
     if not filename:

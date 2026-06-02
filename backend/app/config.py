@@ -98,5 +98,11 @@ SUPPORTED_FONT_EXTS: dict[str, str] = {
 # 字型檔案上傳大小限制
 MAX_FONT_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 
+# 安全設定
+# 設 SECURE_COOKIES=true 可在 HTTPS 環境（如 ngrok）下強制 secure cookie
+SECURE_COOKIES: bool = os.getenv("SECURE_COOKIES", "false").lower() == "true"
+# 設 ENABLE_API_DOCS=true 才開放 /api/docs、/api/openapi.json（預設關閉）
+ENABLE_API_DOCS: bool = os.getenv("ENABLE_API_DOCS", "false").lower() == "true"
+
 for directory in [BG_DIR, THUMB_DIR, FONTS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
