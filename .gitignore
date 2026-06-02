@@ -15,6 +15,7 @@ backend/storage/accounts.json
 backend/storage/photo_codes.json
 backend/storage/line_config.json
 backend/storage/ngrok_config.json
+backend/
 
 # 虛擬環境（如果用 venv 開發）
 .venv/
