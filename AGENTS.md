@@ -42,6 +42,12 @@
 - [x] LINE BOT 整合（Webhook / 輸入碼查詢照片）
 - [x] 系統一鍵重置 API（`POST /api/admin/reset`）
 
+### 第五階段：外觀客製化 ✅
+- [x] 首頁文字客製化（主標題 / 副標題 / 中段文字）— `GET /api/index-text`、`POST /api/admin/index-text`
+- [x] 字體選擇（Noto Sans JP / Noto Serif JP / M PLUS Rounded 1c / Zen Kaku Gothic New / Shippori Mincho）
+- [x] 首頁動態載入文字設定（JS fetch，支援重置恢復預設）
+- [x] 管理後台 Tab 重組（外觀 / 服務 / 照片 / 系統）
+
 ### 決策記錄
 
 | 日期 | 決策 | 原因 |
@@ -75,16 +81,21 @@ backend/storage/
 ├── accounts.json
 ├── line_config.json
 ├── ngrok_config.json
-└── photo_codes.json
+├── photo_codes.json
+└── index_text.json  # 首頁文字設定（主標題 / 副標題 / 中段文字 / 字體）
 ```
 
 ## 管理後台 Tab 結構
 
-- **設定**
+- **外觀**（預設開啟頁）
   - 首頁底圖（上傳 / 刪除）
+  - 首頁文字（主標題 / 副標題 / 中段文字 / 字體選擇，存入 index_text.json）
+- **服務**
   - LINE BOT（Channel Secret / Access Token 設定 + Webhook URL 顯示）
   - 外網穿透（ngrok token + 啟動 / 停止）
-  - 帳號管理（列表 / 新增 / 改密碼 / 刪除）
-- **拍攝照片**
+- **照片**
   - incoming 照片 grid（縮圖 via `/api/admin/incoming/thumb/{filename}`，含取件碼顯示）
   - 單張刪除 / 清除全部 / 開啟資料夾
+- **系統**
+  - 帳號管理（列表 / 新增 / 改密碼 / 刪除）
+  - 系統重置（清除照片 / LINE 設定 / 底圖 / 首頁文字）

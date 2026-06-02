@@ -8,7 +8,7 @@ from pathlib import Path
 
 # 應用程式設定
 APP_TITLE = "智能拍貼機邊緣端系統"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 APP_DESCRIPTION = "支援 WebSocket 即時預覽、取件碼系統、LINE BOT 整合的展場級拍貼系統"
 
 # 目錄路徑配置
@@ -66,6 +66,15 @@ PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
 NGROK_CONFIG_FILE = STORAGE_DIR / "ngrok_config.json"
 
 THUMB_DIR = STORAGE_DIR / "thumbs"
+
+# 首頁文字設定
+INDEX_TEXT_FILE = STORAGE_DIR / "index_text.json"
+INDEX_TEXT_DEFAULTS = {
+    "main_title": "風嶺",
+    "subtitle": "拍貼機",
+    "middle_text": "CCIT · PHOTO STUDIO",
+    "font": "Noto Sans JP",
+}
 
 for directory in [BG_DIR, THUMB_DIR]:
     directory.mkdir(parents=True, exist_ok=True)

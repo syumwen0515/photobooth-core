@@ -135,7 +135,7 @@
 
         <!-- Brand -->
         <div class="anim d2 text-center">
-            <div style="
+            <div id="idx-main-title" style="
                 font-size: clamp(3.2rem, 9vw, 6.5rem);
                 font-weight: 100;
                 letter-spacing: 0.38em;
@@ -143,7 +143,7 @@
                 line-height: 1;
                 color: #f5f5f0;
             ">風嶺</div>
-            <div style="
+            <div id="idx-subtitle" style="
                 font-size: clamp(1rem, 2.5vw, 1.6rem);
                 font-weight: 200;
                 letter-spacing: 0.6em;
@@ -156,7 +156,7 @@
         <!-- Middle divider -->
         <div class="anim d3 flex flex-col items-center mt-8 mb-8 gap-0">
             <div style="width:1px; height:32px; background: linear-gradient(to bottom, rgba(184,197,214,0.25), rgba(184,197,214,0.06));"></div>
-            <div style="
+            <div id="idx-middle-text" style="
                 font-size: 0.58rem;
                 letter-spacing: 0.38em;
                 color: rgba(184,197,214,0.38);
@@ -206,6 +206,35 @@
     const canvas = document.createElement('canvas');
     const supportsWebP = canvas.toDataURL('image/webp').startsWith('data:image/webp');
     loadBg(supportsWebP ? '/static/bg/bg.webp?' + ts : '/static/bg/bg.jpg?' + ts);
+
+    const FONT_QUERY_MAP = {
+        'Noto Sans JP':        'Noto+Sans+JP:wght@100;200;300;400',
+        'Noto Serif JP':       'Noto+Serif+JP:wght@200;300;400',
+        'M PLUS Rounded 1c':   'M+PLUS+Rounded+1c:wght@100;200;300;400',
+        'Zen Kaku Gothic New': 'Zen+Kaku+Gothic+New:wght@300;400;500',
+        'Shippori Mincho':     'Shippori+Mincho:wght@400;500;600',
+    };
+
+    function applyFont(fontName) {
+        const query = FONT_QUERY_MAP[fontName];
+        if (!query || fontName === 'Noto Sans JP') return;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=' + query + '&display=swap';
+        document.head.appendChild(link);
+        document.body.style.fontFamily = "'" + fontName + "', sans-serif";
+    }
+
+    fetch('/api/index-text').then(r => r.ok ? r.json() : null).then(data => {
+        if (!data) return;
+        const mainEl   = document.getElementById('idx-main-title');
+        const subEl    = document.getElementById('idx-subtitle');
+        const midEl    = document.getElementById('idx-middle-text');
+        if (data.main_title  && mainEl) mainEl.textContent = data.main_title;
+        if (data.subtitle    && subEl)  subEl.textContent  = data.subtitle;
+        if (data.middle_text && midEl)  midEl.textContent  = data.middle_text;
+        if (data.font) applyFont(data.font);
+    }).catch(() => {});
 </script>
 </body>
 </html>

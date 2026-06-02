@@ -27,7 +27,8 @@ photobooth-core/
 │       ├── accounts.json
 │       ├── line_config.json
 │       ├── ngrok_config.json
-│       └── photo_codes.json
+│       ├── photo_codes.json
+│       └── index_text.json        # 首頁文字設定（按需生成）
 ├── python/                        # 內嵌 Python 執行環境
 ├── first_run_setup.bat            # 首次安裝：設定 pip + 安裝依賴 + 可選清除舊資料
 ├── start.bat
@@ -70,6 +71,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 管理員登入 / 登出 / Session 管理
 - [x] 帳號管理（新增 / 刪除 / 改密碼）
 - [x] 首頁底圖上傳 / 刪除
+- [x] 首頁文字客製化（主標題 / 副標題 / 中段文字 / 字體）
 - [x] 相機照片自動監聽（Watchdog）
 - [x] WebSocket 即時推播到管理後台
 - [x] 取件碼自動指派（6 碼，去除易混淆字元）
@@ -77,8 +79,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 縮圖快取系統（480px WebP，`storage/thumbs/`，按需生成）
 - [x] LINE BOT 整合（Webhook / 輸入取件碼查詢）
 - [x] ngrok 外網穿透（API + 管理 UI）
-- [x] 系統一鍵重置（清除所有照片、設定、取件碼）
+- [x] 系統一鍵重置（清除所有照片、設定、取件碼、首頁文字）
 - [x] 管理後台「開啟資料夾」快速開啟 incoming 目錄（跨平台；僅本機存取可用，ngrok 等遠端連線自動隱藏按鈕並由後端 403 雙重封鎖）
+- [x] 管理後台重組為 4 個分類 Tab（外觀 / 服務 / 照片 / 系統）
 
 ## 工作流程
 
@@ -121,6 +124,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | POST | `/api/admin/upload-bg` | 上傳底圖 |
 | DELETE | `/api/admin/bg` | 刪除底圖 |
 | GET | `/api/admin/bg-status` | 底圖狀態 |
+
+### 首頁文字
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| GET | `/api/index-text` | 取得首頁文字設定（公開）|
+| POST | `/api/admin/index-text` | 儲存首頁文字設定 |
 
 ### 拍攝照片（incoming）
 | 方法 | 端點 | 說明 |
@@ -192,4 +201,4 @@ NGROK_AUTHTOKEN=your_token_here
 
 ---
 
-**版本**: 0.3.0 | **更新**: 2026-06-02 | **狀態**: 生產就緒
+**版本**: 0.4.0 | **更新**: 2026-06-02 | **狀態**: 生產就緒

@@ -35,6 +35,7 @@ from app.config import (
     LINE_CONFIG_FILE, PHOTO_CODES_FILE, PUBLIC_BASE_URL,
     NGROK_CONFIG_FILE,
     THUMB_DIR,
+    INDEX_TEXT_FILE, INDEX_TEXT_DEFAULTS,
 )
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
@@ -144,6 +145,20 @@ def _save_line_config(channel_secret: str, channel_access_token: str) -> None:
                    ensure_ascii=False),
         encoding="utf-8",
     )
+
+
+def _load_index_text() -> Dict[str, str]:
+    if INDEX_TEXT_FILE.exists():
+        try:
+            data = json.loads(INDEX_TEXT_FILE.read_text(encoding="utf-8"))
+            return {**INDEX_TEXT_DEFAULTS, **data}
+        except Exception:
+            pass
+    return dict(INDEX_TEXT_DEFAULTS)
+
+
+def _save_index_text(data: Dict[str, str]) -> None:
+    INDEX_TEXT_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _get_public_base_url() -> str:
@@ -276,6 +291,12 @@ class ChangePasswordRequest(BaseModel):
 class LineConfigRequest(BaseModel):
     channel_secret: str
     channel_access_token: str
+
+class IndexTextRequest(BaseModel):
+    main_title: str
+    subtitle: str
+    middle_text: str
+    font: str
 
 
 # ==================== 輔助函數 ====================
@@ -487,6 +508,28 @@ async def get_bg_status() -> Dict[str, Any]:
     bg_path = BG_DIR / "bg.jpg"
     return {"exists": bg_path.exists(), "url": f"{STATIC_BG_ROUTE}/bg.jpg" if bg_path.exists() else None}
 
+
+# ==================== 首頁文字 API ====================
+
+@app.get("/api/index-text", tags=["IndexText"])
+async def get_index_text() -> Dict[str, str]:
+    return _load_index_text()
+
+
+@app.post(f"{API_ADMIN_PREFIX}/index-text", tags=["IndexText"])
+async def save_index_text(request: IndexTextRequest, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, str]:
+    _require_auth(pb_session)
+    allowed_fonts = {"Noto Sans JP", "Noto Serif JP", "M PLUS Rounded 1c", "Zen Kaku Gothic New", "Shippori Mincho"}
+    if request.font not in allowed_fonts:
+        raise HTTPException(status_code=400, detail="不支援的字體")
+    data = {
+        "main_title": request.main_title[:30],
+        "subtitle": request.subtitle[:30],
+        "middle_text": request.middle_text[:60],
+        "font": request.font,
+    }
+    _save_index_text(data)
+    return {"message": "首頁文字設定已儲存"}
 
 
 # ==================== 拍攝照片管理 API ====================
@@ -758,6 +801,14 @@ async def reset_system(pb_session: Optional[str] = Cookie(default=None)) -> Dict
         results["background"] = "已清除" if cleared else "無底圖，略過"
     except Exception as e:
         results["background"] = f"失敗: {e}"
+
+    # 重置首頁文字
+    try:
+        if INDEX_TEXT_FILE.exists():
+            INDEX_TEXT_FILE.unlink()
+        results["index_text"] = "已重置為預設值"
+    except Exception as e:
+        results["index_text"] = f"失敗: {e}"
 
     logger.info("✓ 系統已執行重置")
     return {"message": "系統已重置完成", "details": results}
