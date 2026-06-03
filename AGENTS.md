@@ -49,9 +49,17 @@ backend/app/
 ├── watcher.py       ← Watchdog 監聽 incoming/，廣播 WebSocket 事件
 ├── ngrok_manager.py ← pyngrok 隧道生命週期
 └── templates/       ← 純靜態 HTML，啟動時載入並快取於記憶體
+    ├── index.html   ← 公開首頁（Hero + Gallery 雙區塊 scroll-snap）
+    ├── admin.html   ← 管理後台
+    ├── login.html
+    └── download.html
 ```
 
 `storage/` 目錄由程式自動建立，不應納入版本控制（`accounts.json` 含密碼雜湊，`line_config.json` 含 API Token）。
+
+**縮圖快取命名規則：**
+- 管理端縮圖：`storage/thumbs/{filename}.thumb.webp`（含原始檔名）
+- 公開縮圖（含浮水印）：`storage/thumbs/pub_{md5(filename)}.webp`（hash 命名，避免中文/特殊字元相容問題）
 
 ---
 
@@ -71,6 +79,11 @@ backend/app/
 ```python
 loop = asyncio.get_running_loop()
 result = await loop.run_in_executor(None, sync_function, arg1, arg2)
+```
+
+**讀取圖片時必須用 BytesIO**，不得直接傳路徑給 `Image.open()`，避免中文/Unicode 路徑在部分 Windows 環境下的相容問題：
+```python
+img = Image.open(io.BytesIO(src_path.read_bytes()))
 ```
 
 ### 檔案安全
@@ -102,6 +115,11 @@ result = await loop.run_in_executor(None, sync_function, arg1, arg2)
 | 2026-06-03 | 深/淺色模式用 CSS variables + `data-theme` | 無建置工具環境下最輕量；不依賴 Tailwind dark class purge；全域狀態一個 attribute 搞定 |
 | 2026-06-03 | i18n 用純 JS TRANSLATIONS 物件 | 不引入外部函式庫，維持零建置工具原則；管理頁面文字量不大，物件方案已足夠 |
 | 2026-06-03 | login.html / download.html 移除 Tailwind CDN | 這兩頁邏輯極簡，Tailwind CDN 的額外 JS runtime 不值得；改用純 CSS 同時統一到 frame-corner / vert-label / wa-input 視覺語言 |
+| 2026-06-03 | Gallery 公開照片用 Canvas 渲染而非 `<img>` | `<img src="...">` 在 DOM 暴露圖片 URL，右鍵另存或開發者工具 Elements tab 即可取得；Canvas 不暴露來源 URL，配合 blob URL 立即撤銷（`revokeObjectURL`）讓圖片無法被追蹤 |
+| 2026-06-03 | 公開縮圖加 Server-side 浮水印 | DevTools Network tab 無法被前端 JS 阻擋；加浮水印讓即使技術用戶從 Network tab 下載的也只是低解析度的浮水印版本，降低直接可用性 |
+| 2026-06-03 | 公開縮圖快取改用 MD5 hash 命名 | `THUMB_DIR / f"{filename}.pub.webp"` 當 filename 為中文時，Windows 的 `Path.exists()` 可能回傳不一致結果；改以 `pub_{md5(filename)}.webp` 確保快取路徑永遠是 ASCII，消除 Unicode 路徑相容問題 |
+| 2026-06-03 | Pillow 讀圖改用 BytesIO | `Image.open(unicode_path)` 在部分 Windows 環境（特別是中文路徑）不穩定；改用 `Image.open(io.BytesIO(path.read_bytes()))` 讓 Pillow 只處理 bytes，路徑讀取交給 Python pathlib |
+| 2026-06-03 | Gallery 相片卡片進場動畫：opacity 用 `@keyframes`，transform 用 `transition` | 若對同一屬性同時套用 animation fill-mode 與 hover transition，animation 層疊優先級較高，hover 的 transition 會被覆蓋；將 opacity（revealFade animation）與 transform（CSS transition）分屬不同機制，消除衝突：scale 0.96→1 由 transition 負責，opacity 0→1 由 animation 負責，hover 的 scale+translateY 仍可正常 transition |
 
 ---
 
@@ -113,6 +131,9 @@ result = await loop.run_in_executor(None, sync_function, arg1, arg2)
 - **不得**在 WebSocket endpoint 跳過 Session 驗證
 - **不得**在 HTML 模板中直接插入未驗證的用戶輸入（使用 `.strip().upper()` 過濾後的取件碼除外，且只有在查表成功後才插入）
 - **不得**在 `main.py` 中定義新的魔法數字或字串常數 — 必須加到 `config.py`
+- **不得**在公開 Gallery 端點改回 `<img src="...">` 渲染 — 必須維持 Canvas + blob URL 模式
+- **不得**對公開縮圖端點（`/api/gallery/thumb/{filename}`）加上 Auth 保護後省略浮水印 — 浮水印是防止 DevTools 直接取圖的最後防線
+- **不得**直接傳 `Path` 物件給 `Image.open()` — 必須改用 `io.BytesIO(path.read_bytes())`
 
 ---
 

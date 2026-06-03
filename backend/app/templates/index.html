@@ -100,150 +100,467 @@
         .d2   { animation-delay: 0.35s; }
         .d3   { animation-delay: 0.6s; }
         .d4   { animation-delay: 0.85s; }
+
+        /* Scroll indicator */
+        @keyframes bounceDown {
+            0%, 100% { transform: translateX(-50%) translateY(0);   opacity: 0.45; }
+            50%       { transform: translateX(-50%) translateY(7px); opacity: 0.9; }
+        }
+        #scroll-hint {
+            position: absolute;
+            bottom: 52px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 8px;
+            transition: opacity 0.4s ease;
+            animation: bounceDown 2.2s ease infinite;
+            animation-delay: 1.8s;
+        }
+        #scroll-hint span {
+            font-size: 0.48rem;
+            letter-spacing: 0.35em;
+            color: rgba(184, 197, 214, 0.32);
+            font-weight: 300;
+        }
+
+        /* Outer scroll container */
+        #scroll-root {
+            height: 100vh;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            scrollbar-width: none;
+        }
+        #scroll-root::-webkit-scrollbar { display: none; }
+
+        /* Sections */
+        #hero-section {
+            height: 100vh;
+            scroll-snap-align: start;
+            position: relative;
+            overflow: hidden;
+        }
+        #gallery-section {
+            height: 100vh;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            background: #0c0c16;
+        }
+
+        /* Gallery header */
+        #gallery-header {
+            flex-shrink: 0;
+            padding: 28px 36px 18px;
+            border-bottom: 1px solid rgba(184, 197, 214, 0.07);
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+        #gallery-header.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Gallery scrollable body */
+        #gallery-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 32px 36px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(184,197,214,0.15) transparent;
+        }
+        #gallery-body::-webkit-scrollbar { width: 4px; }
+        #gallery-body::-webkit-scrollbar-track { background: transparent; }
+        #gallery-body::-webkit-scrollbar-thumb { background: rgba(184,197,214,0.15); border-radius: 2px; }
+
+        /* Photo grid */
+        #gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 10px;
+        }
+
+        /* Photo item */
+        .gallery-item {
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(184, 197, 214, 0.1);
+            background: rgba(184, 197, 214, 0.03);
+            aspect-ratio: 2 / 3;
+            opacity: 0;
+            transform: scale(0.96);
+            transition: transform 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        border-color 0.42s ease,
+                        box-shadow 0.42s ease;
+        }
+        .gallery-item canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            pointer-events: none;
+            user-select: none;
+        }
+        /* Transparent overlay — intercepts right-click, drag */
+        .gallery-item::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+        }
+        /* Revealed state: scale-up via transition + fade-in via animation */
+        .gallery-item.revealed {
+            transform: scale(1);
+            animation: revealFade 0.5s ease forwards;
+        }
+        .gallery-item:hover {
+            transform: scale(1.04) translateY(-5px);
+            border-color: rgba(184, 197, 214, 0.3);
+            box-shadow: 0 14px 38px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.28);
+            z-index: 1;
+        }
+
+        /* Skeleton loader */
+        .gallery-item.loading {
+            opacity: 1;
+            transform: scale(0.96);
+            background: linear-gradient(
+                90deg,
+                rgba(184,197,214,0.04) 0%,
+                rgba(184,197,214,0.09) 50%,
+                rgba(184,197,214,0.04) 100%
+            );
+            background-size: 200% 100%;
+            animation: shimmer 1.6s infinite;
+        }
+        @keyframes shimmer {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        @keyframes revealFade {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+
+        /* Empty state */
+        #gallery-empty {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 55vh;
+            color: rgba(184, 197, 214, 0.22);
+            gap: 14px;
+        }
+        #gallery-empty span {
+            font-size: 0.6rem;
+            letter-spacing: 0.35em;
+            font-weight: 300;
+        }
+
+        /* Prevent print of gallery */
+        @media print {
+            #gallery-section { display: none !important; }
+        }
     </style>
 </head>
-<body class="relative min-h-screen overflow-hidden" style="background: #0c0c16;">
+<body style="background:#0c0c16; margin:0; padding:0; overflow:hidden;">
 
-    <div id="bg"></div>
-    <div id="bg-overlay"></div>
+<div id="scroll-root">
 
-    <!-- Frame corner decorations -->
-    <div class="absolute inset-7 pointer-events-none" style="z-index: 5;">
-        <div class="frame-corner" style="top:0;left:0;"></div>
-        <div class="frame-corner tr"></div>
-        <div class="frame-corner bl"></div>
-        <div class="frame-corner br"></div>
-    </div>
+    <!-- ══ Section 1: Hero ══ -->
+    <section id="hero-section">
 
-    <!-- Vertical side labels -->
-    <div class="absolute left-7 top-1/2 -translate-y-1/2 pointer-events-none" style="z-index: 5;">
-        <span class="vert-label">拍貼機 · PHOTOBOOTH</span>
-    </div>
-    <div class="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none" style="z-index: 5;">
-        <span class="vert-label">風嶺 · CCIT</span>
-    </div>
+        <div id="bg"></div>
+        <div id="bg-overlay"></div>
 
-    <!-- Main content -->
-    <div class="relative z-10 min-h-screen flex flex-col items-center justify-center px-16 select-none">
-
-        <!-- Top decorative rule -->
-        <div class="anim d1 flex items-center gap-3 mb-10">
-            <div style="width:40px; height:1px; background:rgba(184,197,214,0.25);"></div>
-            <div style="width:5px; height:5px; border:1px solid rgba(184,197,214,0.35); transform:rotate(45deg);"></div>
-            <div style="width:40px; height:1px; background:rgba(184,197,214,0.25);"></div>
+        <!-- Frame corner decorations -->
+        <div class="absolute inset-7 pointer-events-none" style="z-index:5;">
+            <div class="frame-corner" style="top:0;left:0;"></div>
+            <div class="frame-corner tr"></div>
+            <div class="frame-corner bl"></div>
+            <div class="frame-corner br"></div>
         </div>
 
-        <!-- Brand -->
-        <div class="anim d2 text-center">
-            <div id="idx-main-title" style="
-                font-size: clamp(3.2rem, 9vw, 6.5rem);
-                font-weight: 100;
-                letter-spacing: 0.38em;
-                text-indent: 0.38em;
-                line-height: 1;
-                color: #f5f5f0;
-            ">風嶺</div>
-            <div id="idx-subtitle" style="
-                font-size: clamp(1rem, 2.5vw, 1.6rem);
-                font-weight: 200;
-                letter-spacing: 0.6em;
-                text-indent: 0.6em;
-                margin-top: 0.55rem;
-                color: rgba(245,245,240,0.52);
-            ">拍貼機</div>
+        <!-- Vertical side labels -->
+        <div class="absolute left-7 top-1/2 -translate-y-1/2 pointer-events-none" style="z-index:5;">
+            <span class="vert-label">拍貼機 · PHOTOBOOTH</span>
+        </div>
+        <div class="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none" style="z-index:5;">
+            <span class="vert-label">風嶺 · CCIT</span>
         </div>
 
-        <!-- Middle divider -->
-        <div class="anim d3 flex flex-col items-center mt-8 mb-8 gap-0">
-            <div style="width:1px; height:32px; background: linear-gradient(to bottom, rgba(184,197,214,0.25), rgba(184,197,214,0.06));"></div>
-            <div id="idx-middle-text" style="
-                font-size: 0.58rem;
-                letter-spacing: 0.38em;
-                color: rgba(184,197,214,0.38);
-                font-weight: 300;
-                margin: 10px 0;
-            ">CCIT · PHOTO STUDIO</div>
-            <div style="width:1px; height:32px; background: linear-gradient(to bottom, rgba(184,197,214,0.06), transparent);"></div>
+        <!-- Main content -->
+        <div class="relative z-10 h-full flex flex-col items-center justify-center px-16 select-none">
+
+            <!-- Top decorative rule -->
+            <div class="anim d1 flex items-center gap-3 mb-10">
+                <div style="width:40px;height:1px;background:rgba(184,197,214,0.25);"></div>
+                <div style="width:5px;height:5px;border:1px solid rgba(184,197,214,0.35);transform:rotate(45deg);"></div>
+                <div style="width:40px;height:1px;background:rgba(184,197,214,0.25);"></div>
+            </div>
+
+            <!-- Brand -->
+            <div class="anim d2 text-center">
+                <div id="idx-main-title" style="
+                    font-size: clamp(3.2rem, 9vw, 6.5rem);
+                    font-weight: 100;
+                    letter-spacing: 0.38em;
+                    text-indent: 0.38em;
+                    line-height: 1;
+                    color: #f5f5f0;
+                ">風嶺</div>
+                <div id="idx-subtitle" style="
+                    font-size: clamp(1rem, 2.5vw, 1.6rem);
+                    font-weight: 200;
+                    letter-spacing: 0.6em;
+                    text-indent: 0.6em;
+                    margin-top: 0.55rem;
+                    color: rgba(245,245,240,0.52);
+                ">拍貼機</div>
+            </div>
+
+            <!-- Middle divider -->
+            <div class="anim d3 flex flex-col items-center mt-8 mb-8 gap-0">
+                <div style="width:1px;height:32px;background:linear-gradient(to bottom,rgba(184,197,214,0.25),rgba(184,197,214,0.06));"></div>
+                <div id="idx-middle-text" style="
+                    font-size: 0.58rem;
+                    letter-spacing: 0.38em;
+                    color: rgba(184,197,214,0.38);
+                    font-weight: 300;
+                    margin: 10px 0;
+                ">CCIT · PHOTO STUDIO</div>
+                <div style="width:1px;height:32px;background:linear-gradient(to bottom,rgba(184,197,214,0.06),transparent);"></div>
+            </div>
+
+            <!-- Action button -->
+            <div class="anim d4">
+                <a href="/admin" class="btn-ghost">管理員後台</a>
+            </div>
+
         </div>
 
-        <!-- Action button -->
-        <div class="anim d4">
-            <a href="/admin" class="btn-ghost">管理員後台</a>
+        <!-- Bottom label -->
+        <div class="absolute bottom-7 left-0 right-0 text-center pointer-events-none" style="z-index:10;">
+            <span style="font-size:0.58rem;letter-spacing:0.28em;color:rgba(184,197,214,0.22);font-weight:300;">
+                風嶺拍貼機 · PHOTOBOOTH SYSTEM
+            </span>
         </div>
 
-    </div>
+        <!-- Scroll indicator -->
+        <button id="scroll-hint" onclick="scrollToGallery()" aria-label="查看照片集">
+            <span>GALLERY</span>
+            <svg width="14" height="9" viewBox="0 0 14 9" fill="none">
+                <path d="M1 1L7 8L13 1" stroke="rgba(184,197,214,0.38)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
 
-    <!-- Bottom label -->
-    <div class="absolute bottom-7 left-0 right-0 text-center pointer-events-none" style="z-index: 10;">
-        <span style="font-size:0.58rem; letter-spacing:0.28em; color:rgba(184,197,214,0.22); font-weight:300;">
-            風嶺拍貼機 · PHOTOBOOTH SYSTEM
-        </span>
-    </div>
+    </section>
+
+    <!-- ══ Section 2: Gallery ══ -->
+    <section id="gallery-section">
+
+        <!-- Header -->
+        <div id="gallery-header">
+            <div>
+                <div style="font-size:0.5rem;letter-spacing:0.42em;color:rgba(184,197,214,0.3);font-weight:300;margin-bottom:5px;">PHOTO GALLERY</div>
+                <div style="font-size:1.3rem;font-weight:100;letter-spacing:0.32em;color:rgba(245,245,240,0.75);">照片集</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:24px;height:1px;background:rgba(184,197,214,0.18);"></div>
+                <div style="width:4px;height:4px;border:1px solid rgba(184,197,214,0.28);transform:rotate(45deg);"></div>
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div id="gallery-body">
+            <div id="gallery-empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <rect x="3" y="3" width="18" height="18" rx="1.5"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span>目前尚無照片</span>
+            </div>
+            <div id="gallery-grid"></div>
+        </div>
+
+    </section>
+
+</div><!-- /scroll-root -->
 
 <script>
-    const bgEl      = document.getElementById('bg');
-    const overlayEl = document.getElementById('bg-overlay');
+/* ── Background image ── */
+const bgEl      = document.getElementById('bg');
+const overlayEl = document.getElementById('bg-overlay');
 
-    function loadBg(src) {
-        const probe = new Image();
-        probe.onload = function () {
-            bgEl.style.backgroundImage = "url('" + src + "')";
-            bgEl.style.opacity = '1';
-            overlayEl.style.opacity = '1';
-        };
-        probe.onerror = function () {
-            if (src.endsWith('.webp')) {
-                loadBg('/static/bg/bg.jpg?' + Date.now());
-            } else {
-                bgEl.style.background = 'radial-gradient(ellipse at 30% 40%, #1a1a2e 0%, #0c0c16 100%)';
-                bgEl.style.opacity = '1';
-            }
-        };
-        probe.src = src;
-    }
-
-    const ts = Date.now();
-    const canvas = document.createElement('canvas');
-    const supportsWebP = canvas.toDataURL('image/webp').startsWith('data:image/webp');
-    loadBg(supportsWebP ? '/static/bg/bg.webp?' + ts : '/static/bg/bg.jpg?' + ts);
-
-    const GOOGLE_FONT_QUERY = {
-        'Noto Sans JP':        'Noto+Sans+JP:wght@100;200;300;400',
-        'Noto Serif JP':       'Noto+Serif+JP:wght@200;300;400',
-        'M PLUS Rounded 1c':   'M+PLUS+Rounded+1c:wght@100;200;300;400',
-        'Zen Kaku Gothic New': 'Zen+Kaku+Gothic+New:wght@300;400;500',
-        'Shippori Mincho':     'Shippori+Mincho:wght@400;500;600',
+function loadBg(src) {
+    const probe = new Image();
+    probe.onload = function () {
+        bgEl.style.backgroundImage = "url('" + src + "')";
+        bgEl.style.opacity = '1';
+        overlayEl.style.opacity = '1';
     };
-
-    function applyFont(data) {
-        const { font, font_source, font_file, font_format } = data;
-        if (!font) return;
-        if (font_source === 'custom' && font_file) {
-            const style = document.createElement('style');
-            style.textContent = "@font-face{font-family:'" + font + "';src:url('" + font_file + "') format('" + font_format + "');font-display:swap;}";
-            document.head.appendChild(style);
-            document.body.style.fontFamily = "'" + font + "', sans-serif";
-        } else if (font_source === 'google' && font !== 'Noto Sans JP') {
-            const query = GOOGLE_FONT_QUERY[font];
-            if (!query) return;
-            const link = document.createElement('link');
-            link.rel = 'stylesheet';
-            link.href = 'https://fonts.googleapis.com/css2?family=' + query + '&display=swap';
-            document.head.appendChild(link);
-            document.body.style.fontFamily = "'" + font + "', sans-serif";
+    probe.onerror = function () {
+        if (src.endsWith('.webp')) {
+            loadBg('/static/bg/bg.jpg?' + Date.now());
+        } else {
+            bgEl.style.background = 'radial-gradient(ellipse at 30% 40%, #1a1a2e 0%, #0c0c16 100%)';
+            bgEl.style.opacity = '1';
         }
-    }
+    };
+    probe.src = src;
+}
 
-    fetch('/api/index-text').then(r => r.ok ? r.json() : null).then(data => {
-        if (!data) return;
-        const mainEl = document.getElementById('idx-main-title');
-        const subEl  = document.getElementById('idx-subtitle');
-        const midEl  = document.getElementById('idx-middle-text');
-        if (data.main_title  && mainEl) mainEl.textContent = data.main_title;
-        if (data.subtitle    && subEl)  subEl.textContent  = data.subtitle;
-        if (data.middle_text && midEl)  midEl.textContent  = data.middle_text;
-        applyFont(data);
-    }).catch(() => {});
+const ts = Date.now();
+const cvs = document.createElement('canvas');
+const supportsWebP = cvs.toDataURL('image/webp').startsWith('data:image/webp');
+loadBg(supportsWebP ? '/static/bg/bg.webp?' + ts : '/static/bg/bg.jpg?' + ts);
+
+/* ── Font / index text ── */
+const GOOGLE_FONT_QUERY = {
+    'Noto Sans JP':        'Noto+Sans+JP:wght@100;200;300;400',
+    'Noto Serif JP':       'Noto+Serif+JP:wght@200;300;400',
+    'M PLUS Rounded 1c':   'M+PLUS+Rounded+1c:wght@100;200;300;400',
+    'Zen Kaku Gothic New': 'Zen+Kaku+Gothic+New:wght@300;400;500',
+    'Shippori Mincho':     'Shippori+Mincho:wght@400;500;600',
+};
+
+function applyFont(data) {
+    const { font, font_source, font_file, font_format } = data;
+    if (!font) return;
+    if (font_source === 'custom' && font_file) {
+        const style = document.createElement('style');
+        style.textContent = "@font-face{font-family:'" + font + "';src:url('" + font_file + "') format('" + font_format + "');font-display:swap;}";
+        document.head.appendChild(style);
+        document.body.style.fontFamily = "'" + font + "', sans-serif";
+    } else if (font_source === 'google' && font !== 'Noto Sans JP') {
+        const query = GOOGLE_FONT_QUERY[font];
+        if (!query) return;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=' + query + '&display=swap';
+        document.head.appendChild(link);
+        document.body.style.fontFamily = "'" + font + "', sans-serif";
+    }
+}
+
+fetch('/api/index-text').then(r => r.ok ? r.json() : null).then(data => {
+    if (!data) return;
+    const mainEl = document.getElementById('idx-main-title');
+    const subEl  = document.getElementById('idx-subtitle');
+    const midEl  = document.getElementById('idx-middle-text');
+    if (data.main_title  && mainEl) mainEl.textContent = data.main_title;
+    if (data.subtitle    && subEl)  subEl.textContent  = data.subtitle;
+    if (data.middle_text && midEl)  midEl.textContent  = data.middle_text;
+    applyFont(data);
+}).catch(() => {});
+
+/* ── Gallery ── */
+let galleryLoaded = false;
+
+function drawToCanvas(canvas, item, url, idx) {
+    const img = new Image();
+    img.onload = function () {
+        canvas.width  = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        item.classList.remove('loading');
+        item.style.animationDelay = Math.min((idx || 0) * 0.055, 0.44) + 's';
+        item.classList.add('revealed');
+    };
+    img.onerror = function () {
+        URL.revokeObjectURL(url);
+        item.classList.remove('loading');
+        item.classList.add('revealed');
+    };
+    img.src = url;
+}
+
+function loadPhotoToCanvas(filename, canvas, item, idx) {
+    fetch('/api/gallery/thumb/' + encodeURIComponent(filename))
+        .then(function (r) { return r.ok ? r.blob() : Promise.reject(); })
+        .then(function (blob) {
+            drawToCanvas(canvas, item, URL.createObjectURL(blob), idx);
+        })
+        .catch(function () {
+            item.classList.remove('loading');
+            item.classList.add('revealed');
+        });
+}
+
+function loadGallery() {
+    fetch('/api/gallery').then(r => r.ok ? r.json() : null).then(data => {
+        const emptyEl = document.getElementById('gallery-empty');
+        const grid    = document.getElementById('gallery-grid');
+        if (!data || !data.photos || data.photos.length === 0) {
+            emptyEl.style.display = 'flex';
+            return;
+        }
+        emptyEl.style.display = 'none';
+        grid.innerHTML = '';
+        data.photos.forEach(function (filename, idx) {
+            const item   = document.createElement('div');
+            item.className = 'gallery-item loading';
+            const canvas = document.createElement('canvas');
+            item.appendChild(canvas);
+            grid.appendChild(item);
+            loadPhotoToCanvas(filename, canvas, item, idx);
+        });
+    }).catch(function () {
+        document.getElementById('gallery-empty').style.display = 'flex';
+    });
+}
+
+/* Lazy-load gallery on first scroll toward it */
+const scrollRoot = document.getElementById('scroll-root');
+scrollRoot.addEventListener('scroll', function () {
+    if (!galleryLoaded && scrollRoot.scrollTop > window.innerHeight * 0.25) {
+        galleryLoaded = true;
+        loadGallery();
+        const hdr = document.getElementById('gallery-header');
+        if (hdr) setTimeout(function () { hdr.classList.add('visible'); }, 80);
+    }
+    /* Fade scroll-hint once user starts scrolling */
+    const hint = document.getElementById('scroll-hint');
+    if (hint) {
+        const gone = scrollRoot.scrollTop > 40;
+        hint.style.opacity = gone ? '0' : '';
+        hint.style.pointerEvents = gone ? 'none' : '';
+    }
+}, { passive: true });
+
+function scrollToGallery() {
+    scrollRoot.scrollTo({ top: window.innerHeight, behavior: 'smooth' });
+}
+
+/* ── Anti-save protections ── */
+document.addEventListener('contextmenu', function (e) {
+    if (e.target.closest && e.target.closest('#gallery-section')) e.preventDefault();
+});
+
+document.addEventListener('dragstart', function (e) {
+    if (e.target.closest && e.target.closest('#gallery-section')) e.preventDefault();
+});
+
+document.addEventListener('keydown', function (e) {
+    const ctrl = e.ctrlKey || e.metaKey;
+    /* Block Ctrl+S (save), Ctrl+U (view-source), Ctrl+P (print) */
+    if (ctrl && ['s', 'u', 'p'].includes(e.key.toLowerCase())) e.preventDefault();
+});
 </script>
 </body>
 </html>

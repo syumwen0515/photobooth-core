@@ -90,6 +90,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 管理後台深/淺色模式切換（CSS variables + `data-theme`，偏好存 `localStorage`）
 - [x] 管理後台多語系（正體中文 / 英文，`data-i18n` 屬性 + `TRANSLATIONS` 物件，偏好存 `localStorage`）
 - [x] login.html / download.html UI 改版（移除 Tailwind CDN；統一 frame-corner / vertical-label 視覺語言）
+- [x] 公開照片集 Gallery（首頁向下捲動切換；scroll-snap 兩區塊設計）
+- [x] 照片防下載保護（Canvas 渲染 + blob URL 立即撤銷 + contextmenu/drag/鍵盤快捷鍵攔截 + CSS print 隱藏）
+- [x] 公開縮圖浮水印（Server-side Pillow 斜向重複浮水印；快取以 MD5 hash 命名，避免中文檔名相容問題）
+- [x] Gallery 相片動畫（相片載入後 stagger 淡入 + scale 放大進場；hover 輕微浮起；gallery header 滑入動畫）
 
 ## 工作流程
 
@@ -171,6 +175,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | POST | `/api/admin/line/config` | 儲存設定 |
 | POST | `/api/line/webhook` | LINE Webhook 接收端 |
 
+### 公開照片集（Gallery）
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| GET | `/api/gallery` | 照片列表（公開，按拍攝時間排序）|
+| GET | `/api/gallery/thumb/{filename}` | 公開縮圖（480px WebP，含浮水印，MD5 hash 快取）|
+
 ### 照片取件
 | 方法 | 端點 | 說明 |
 |------|------|------|
@@ -211,6 +221,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 安全標頭 | `X-Content-Type-Options`、`X-Frame-Options: DENY`、`Referrer-Policy`、`Permissions-Policy`、`Content-Security-Policy`（`frame-ancestors 'none'`）；HTTPS 環境下另加 `Strict-Transport-Security` |
 | 本機限定功能 | `open-incoming-folder` 端點檢查 Host header，非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
+| 公開照片防下載 | Canvas 渲染（不暴露 img src）+ blob URL 使用後立即撤銷 + 右鍵/拖曳/Ctrl+S 攔截；即使 DevTools Network tab 取得的也只是含浮水印的 480px 縮圖 |
+| 縮圖快取命名 | 公開縮圖以 `MD5(filename)` 命名（`pub_<hash>.webp`），避免中文/特殊字元檔名在 Windows 路徑比對不一致；Pillow 讀圖改用 BytesIO，避免 Unicode path 相容問題 |
 
 ## 故障排除
 
@@ -230,7 +242,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.4.1 | **更新**: 2026-06-03 | **狀態**: 生產就緒
+**版本**: 0.4.2 | **更新**: 2026-06-03 | **狀態**: 生產就緒
 
 ## 開發中 / 規劃中功能
 
@@ -240,3 +252,4 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 深/淺色模式切換 | login / index | 🚧 規劃中 | 尚未擴展 |
 | 多語系（i18n）| admin.html | ✅ 完成 | `TRANSLATIONS` 物件 + `data-i18n`，支援 zh-TW / en |
 | 多語系（i18n）| login / index | 🚧 規劃中 | 尚未擴展 |
+| Gallery 頁面管理後台控制 | admin.html | 🚧 規劃中 | 管理員可控制 Gallery 顯示哪些照片（目前顯示全部 incoming 照片）|

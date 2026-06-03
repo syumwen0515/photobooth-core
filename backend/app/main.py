@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import hashlib
 import io
 import json
 import os
@@ -20,7 +21,7 @@ from websockets.exceptions import ConnectionClosedError
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -622,6 +623,45 @@ async def save_index_text(request: IndexTextRequest, pb_session: Optional[str] =
     return {"message": "首頁文字設定已儲存"}
 
 
+# ==================== 公開照片集 API ====================
+
+@app.get("/api/gallery", tags=["Public"], summary="公開照片集列表")
+async def get_gallery_list() -> Dict[str, Any]:
+    try:
+        paths = [p for p in INCOMING_DIR.iterdir() if p.suffix.lower() in SUPPORTED_IMAGE_FORMATS]
+        paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return {"photos": [p.name for p in paths], "count": len(paths)}
+    except Exception:
+        return {"photos": [], "count": 0}
+
+
+@app.get("/api/gallery/thumb/{filename}", tags=["Public"], summary="公開照片縮圖（含浮水印）")
+async def get_gallery_thumb_public(filename: str) -> FileResponse:
+    if not validate_filename_safety(filename):
+        raise HTTPException(status_code=400, detail="無效的檔案名稱")
+    src_path = INCOMING_DIR / filename
+    if not src_path.exists():
+        raise HTTPException(status_code=404, detail="找不到照片")
+    try:
+        src_path.resolve().relative_to(INCOMING_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="路徑驗證失敗")
+    # 以 hash 命名快取，避免中文/特殊字元檔名在不同 OS 的相容問題
+    thumb_path = _pub_thumb_path(filename)
+    if not thumb_path.exists():
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, _generate_public_thumbnail, src_path, thumb_path)
+        except Exception as e:
+            logger.error(f"公開縮圖生成失敗 {filename}: {e}")
+            raise HTTPException(status_code=500, detail="縮圖生成失敗")
+    return FileResponse(
+        str(thumb_path),
+        media_type="image/webp",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
 # ==================== 自訂字型 API ====================
 
 @app.get("/api/fonts", tags=["Fonts"])
@@ -686,10 +726,68 @@ async def list_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Dic
 
 
 def _generate_thumbnail(src_path: Path, thumb_path: Path) -> None:
-    img = ImageOps.exif_transpose(Image.open(src_path)).convert("RGB")
+    img = ImageOps.exif_transpose(
+        Image.open(io.BytesIO(src_path.read_bytes()))
+    ).convert("RGB")
     img.thumbnail((480, 480), Image.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, "WEBP", quality=72, method=4)
+    thumb_path.write_bytes(buf.getvalue())
+
+
+def _wm_font(size: int) -> ImageFont.ImageFont:
+    candidates = [
+        r"C:\Windows\Fonts\meiryo.ttc",
+        r"C:\Windows\Fonts\msgothic.ttc",
+        r"C:\Windows\Fonts\arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                pass
+    return ImageFont.load_default(size=size)
+
+
+def _pub_thumb_path(filename: str) -> Path:
+    """以 MD5 hash 產生公開縮圖快取路徑，避免中文/特殊字元問題。"""
+    key = hashlib.md5(filename.encode("utf-8")).hexdigest()
+    return THUMB_DIR / f"pub_{key}.webp"
+
+
+def _generate_public_thumbnail(src_path: Path, thumb_path: Path) -> None:
+    """縮圖 + 浮水印，供公開照片集使用（與管理端縮圖分開快取）。"""
+    img = ImageOps.exif_transpose(
+        Image.open(io.BytesIO(src_path.read_bytes()))
+    ).convert("RGBA")
+    img.thumbnail((480, 480), Image.LANCZOS)
+    w, h = img.size
+
+    font_size = max(13, w // 16)
+    font = _wm_font(font_size)
+
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    text = "風嶺拍貼機"
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+    # Tile diagonally across entire image
+    step_x = tw + max(30, w // 6)
+    step_y = th + max(24, h // 8)
+    for row, base_y in enumerate(range(-step_y, h + step_y, step_y)):
+        offset_x = (tw // 2) if row % 2 else 0
+        for base_x in range(-step_x + offset_x, w + step_x, step_x):
+            draw.text((base_x, base_y), text, font=font, fill=(255, 255, 255, 48))
+
+    rotated = overlay.rotate(20, expand=False)
+    result = Image.alpha_composite(img, rotated).convert("RGB")
+    buf = io.BytesIO()
+    result.save(buf, "WEBP", quality=72, method=4)
     thumb_path.write_bytes(buf.getvalue())
 
 
