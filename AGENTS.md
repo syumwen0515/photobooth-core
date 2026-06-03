@@ -125,6 +125,9 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-03 | `photo_download_page` 改用 `_get_html()` 快取讀取 `download.html` | 原先每次取件頁面請求都直接 `read_text()` 讀磁碟，未使用與其他頁面一致的記憶體快取；改用 `_get_html("download.html")` 後首次後快取在記憶體，後續請求不再觸碰磁碟 |
 | 2026-06-03 | `_wm_font()` 新增 `msyh.ttc`（微軟正黑體）與 `simsun.ttc`（新細明體）備援 | 原先只嘗試 meiryo（需日文語言支援）與 msgothic；若未安裝日文語言包，浮水印中文字符渲染失敗（顯示方塊）；加入更常見的繁/簡中文字型優先順序 |
 | 2026-06-03 | `_session_cleanup_task` 每小時順帶清理 `_code_request_log` 中的孤兒 IP 鍵 | IP 速率限制 dict 的值（timestamp list）會被清空，但鍵本身（IP 字串）永不移除，造成緩慢的記憶體增長；每小時清理一次所有 window 內無有效記錄的 IP 鍵 |
+| 2026-06-03 | Login form 加 `method="post" action="/api/auth/login"`（CWE-598）| 表單未設 method 屬性時預設為 GET；若 JS 停用，帳號密碼會出現在 URL query string，被 server log / browser history 記錄；加上 method/action 確保即使 JS 停用也走 POST |
+| 2026-06-03 | CSP header 全面強化 | 原 CSP 只設 3 條（frame-ancestors / object-src / base-uri），ZAP 掃出 4 個 Medium 警告：未定義 form-action（無 fallback）、script-src / style-src / 其他資源指令未設（等同允許所有來源）；補上 default-src / script-src / style-src / font-src / img-src / connect-src / form-action |
+| 2026-06-03 | Axios CDN 加 SRI（Subresource Integrity）+ 固定版本 | 直接載入 `npm/axios/dist/axios.min.js` 無版本鎖定，CDN 若被汙染可注入任意 JS；改為 `axios@1.16.1` 並加 `integrity="sha384-..."` + `crossorigin="anonymous"`，瀏覽器驗證 hash 失敗時拒絕執行 |
 
 ---
 
@@ -139,6 +142,9 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**在公開 Gallery 端點改回 `<img src="...">` 渲染 — 必須維持 Canvas + blob URL 模式
 - **不得**對公開縮圖端點（`/api/gallery/thumb/{filename}`）加上 Auth 保護後省略浮水印 — 浮水印是防止 DevTools 直接取圖的最後防線
 - **不得**直接傳 `Path` 物件給 `Image.open()` — 必須改用 `io.BytesIO(path.read_bytes())`
+- **不得**縮減 `add_security_headers` 中的 CSP 指令 — 若需新增外部資源來源（CDN、字型服務），應將其加入對應指令白名單，而非移除限制
+- **不得**移除 `axios@1.16.1` script tag 的 `integrity` 屬性，或將 CDN URL 改回無版本形式（`npm/axios/dist/axios.min.js`）；升級 axios 版本時必須同步更新 URL 和 hash
+- **不得**在 login form 移除 `method="post"` 屬性
 
 ---
 
@@ -177,6 +183,35 @@ async def public_thing(code: str, request: Request) -> ...:
 `templates/` 下的 HTML 是純靜態檔案，Tailwind 和 Axios 從 CDN 載入。沒有建置流程，直接編輯 HTML 即可。
 
 修改前端後，若伺服器已啟動，需設 `RELOAD_ADMIN_HTML=true` 或重啟伺服器（預設會快取 HTML）。
+
+### Axios CDN SRI
+
+`login.html` 與 `admin.html` 的 axios `<script>` tag 已鎖定版本與 integrity hash：
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/axios@1.16.1/dist/axios.min.js"
+        integrity="sha384-LEhCeSYMzzIZgXNDqOnt039uBFADh2Yf9gaWTpae2Da9UHXEkW6C95emO9aEKIlp"
+        crossorigin="anonymous"></script>
+```
+
+升級 axios 時必須同步更新兩個 HTML 的 URL 和 hash。計算新 hash 的方式：
+
+```bash
+curl -s https://cdn.jsdelivr.net/npm/axios@X.Y.Z/dist/axios.min.js | \
+  openssl dgst -sha384 -binary | openssl base64 -A
+```
+
+### CSP 外部資源白名單
+
+目前 `add_security_headers`（`main.py`）CSP 允許的外部來源：
+
+| 指令 | 允許來源 |
+|------|---------|
+| `script-src` | `cdn.jsdelivr.net`、`cdn.tailwindcss.com` |
+| `style-src` | `fonts.googleapis.com` |
+| `font-src` | `fonts.gstatic.com` |
+
+新增外部 CDN 資源時，必須更新對應指令的白名單，不可使用萬用字元（`*`）。
 
 ---
 

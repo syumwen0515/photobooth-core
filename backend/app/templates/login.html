@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>風嶺拍貼機 — 管理員登入</title>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.16.1/dist/axios.min.js"
+            integrity="sha384-LEhCeSYMzzIZgXNDqOnt039uBFADh2Yf9gaWTpae2Da9UHXEkW6C95emO9aEKIlp"
+            crossorigin="anonymous"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300;400&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -140,7 +142,7 @@
     </div>
 
     <!-- Form -->
-    <form id="loginForm" class="anim d3" style="display:flex; flex-direction:column; gap:16px;" autocomplete="on">
+    <form id="loginForm" class="anim d3" style="display:flex; flex-direction:column; gap:16px;" autocomplete="on" method="post" action="/api/auth/login">
         <div>
             <label for="username"
                    style="display:block; font-size:0.65rem; color:rgba(43,43,43,0.5); font-weight:300;

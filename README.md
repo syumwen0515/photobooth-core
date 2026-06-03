@@ -98,6 +98,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 取件頁面模板快取（`download.html` 改用 `_get_html()` 記憶體快取，不再逐次讀磁碟）
 - [x] 浮水印字型備援強化（`_wm_font()` 新增 `msyh.ttc` / `simsun.ttc`，確保無日文語言包環境仍可渲染中文）
 - [x] IP 速率限制記憶體清理（`_session_cleanup_task` 每小時一併清理 `_code_request_log` 孤兒鍵）
+- [x] Login form 修補 CWE-598（加 `method="post"`，密碼不再可能出現於 URL query string）
+- [x] CSP header 全面強化（補齊 `default-src`、`script-src`、`style-src`、`font-src`、`img-src`、`connect-src`、`form-action`，消除 ZAP 的 4 個 Medium CSP 警告）
+- [x] Axios CDN 加 SRI（`integrity="sha384-..."` + 固定版本 `axios@1.16.1`，防止 CDN 供應鏈攻擊）
 
 ## 工作流程
 
@@ -222,7 +225,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 路徑驗證 | 所有檔案操作透過 `validate_filename_safety` + `Path.resolve().relative_to()` 雙重防護 |
 | XSS 防護 | 前端照片卡片 filename 以 HTML escape + `data-*` 屬性 + 事件委派處理，不使用 inline `onclick` |
 | 密碼輸入遮罩 | 改密碼透過頁內 Modal（`type="password"` 欄位）完成，不使用原生 `prompt()`（明碼顯示）|
-| 安全標頭 | `X-Content-Type-Options`、`X-Frame-Options: DENY`、`Referrer-Policy`、`Permissions-Policy`、`Content-Security-Policy`（`frame-ancestors 'none'`）；HTTPS 環境下另加 `Strict-Transport-Security` |
+| 安全標頭 | `X-Content-Type-Options`、`X-Frame-Options: DENY`、`Referrer-Policy`、`Permissions-Policy`；HTTPS 環境下另加 `Strict-Transport-Security` |
+| Content-Security-Policy | `default-src 'self'`；`script-src` 白名單 jsdelivr / tailwind CDN；`style-src` 白名單 Google Fonts；`font-src` 白名單 fonts.gstatic.com；`img-src` 允許 `data:` / `blob:`；`connect-src 'self'`；`form-action 'self'`；`frame-ancestors 'none'`；`object-src 'none'`；`base-uri 'self'` |
+| Subresource Integrity | `login.html` / `admin.html` 的 Axios CDN 標籤加上 `integrity="sha384-..."` + 版本固定為 `axios@1.16.1`，瀏覽器驗證 hash 失敗時拒絕執行，防止 CDN 供應鏈攻擊 |
 | 本機限定功能 | `open-incoming-folder` 端點檢查 Host header，非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
 | 公開照片防下載 | Canvas 渲染（不暴露 img src）+ blob URL 使用後立即撤銷 + 右鍵/拖曳/Ctrl+S 攔截；即使 DevTools Network tab 取得的也只是含浮水印的 480px 縮圖 |

@@ -346,9 +346,17 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    # 防止 base-tag 劫持、禁止嵌入 object/embed、禁止 framing（比 X-Frame-Options 更現代）
     response.headers["Content-Security-Policy"] = (
-        "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+        "default-src 'self'; "
+        "script-src 'self' https://cdn.jsdelivr.net https://cdn.tailwindcss.com 'unsafe-inline'; "
+        "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: blob:; "
+        "connect-src 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'"
     )
     if SECURE_COOKIES:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
