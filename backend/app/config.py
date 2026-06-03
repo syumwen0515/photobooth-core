@@ -69,6 +69,13 @@ THUMB_DIR = STORAGE_DIR / "thumbs"
 FONTS_DIR  = STORAGE_DIR / "fonts"
 FONTS_META_FILE = STORAGE_DIR / "fonts_meta.json"
 
+# Gallery 設定
+GALLERY_CONFIG_FILE = STORAGE_DIR / "gallery_config.json"
+GALLERY_CONFIG_DEFAULTS: dict = {
+    "enabled": True,
+    "watermark_text": "風嶺拍貼機",
+}
+
 # 首頁文字設定
 INDEX_TEXT_FILE = STORAGE_DIR / "index_text.json"
 INDEX_TEXT_DEFAULTS = {

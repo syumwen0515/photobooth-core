@@ -490,8 +490,10 @@ function drawToCanvas(canvas, item, url, idx) {
     img.src = url;
 }
 
-function loadPhotoToCanvas(filename, canvas, item, idx) {
-    fetch('/api/gallery/thumb/' + encodeURIComponent(filename))
+function loadPhotoToCanvas(filename, canvas, item, idx, wmVersion) {
+    var url = '/api/gallery/thumb/' + encodeURIComponent(filename);
+    if (wmVersion) url += '?v=' + wmVersion;
+    fetch(url)
         .then(function (r) { return r.ok ? r.blob() : Promise.reject(); })
         .then(function (blob) {
             drawToCanvas(canvas, item, URL.createObjectURL(blob), idx);
@@ -504,26 +506,42 @@ function loadPhotoToCanvas(filename, canvas, item, idx) {
 
 function loadGallery() {
     fetch('/api/gallery').then(r => r.ok ? r.json() : null).then(data => {
+        if (!data || data.enabled === false) {
+            document.getElementById('gallery-section').style.display = 'none';
+            document.getElementById('scroll-hint').style.display = 'none';
+            return;
+        }
         const emptyEl = document.getElementById('gallery-empty');
         const grid    = document.getElementById('gallery-grid');
-        if (!data || !data.photos || data.photos.length === 0) {
+        if (!data.photos || data.photos.length === 0) {
             emptyEl.style.display = 'flex';
             return;
         }
         emptyEl.style.display = 'none';
         grid.innerHTML = '';
+        const wmVersion = data.wm_version || '';
         data.photos.forEach(function (filename, idx) {
             const item   = document.createElement('div');
             item.className = 'gallery-item loading';
             const canvas = document.createElement('canvas');
             item.appendChild(canvas);
             grid.appendChild(item);
-            loadPhotoToCanvas(filename, canvas, item, idx);
+            loadPhotoToCanvas(filename, canvas, item, idx, wmVersion);
         });
     }).catch(function () {
         document.getElementById('gallery-empty').style.display = 'flex';
     });
 }
+
+/* Early check: hide scroll-hint if gallery is disabled */
+fetch('/api/gallery').then(r => r.ok ? r.json() : null).then(function (data) {
+    if (!data || data.enabled === false) {
+        var hint = document.getElementById('scroll-hint');
+        if (hint) hint.style.display = 'none';
+        document.getElementById('gallery-section').style.display = 'none';
+        galleryLoaded = true; /* prevent lazy-load from overriding */
+    }
+}).catch(function () {});
 
 /* Lazy-load gallery on first scroll toward it */
 const scrollRoot = document.getElementById('scroll-root');
@@ -536,7 +554,7 @@ scrollRoot.addEventListener('scroll', function () {
     }
     /* Fade scroll-hint once user starts scrolling */
     const hint = document.getElementById('scroll-hint');
-    if (hint) {
+    if (hint && hint.style.display !== 'none') {
         const gone = scrollRoot.scrollTop > 40;
         hint.style.opacity = gone ? '0' : '';
         hint.style.pointerEvents = gone ? 'none' : '';

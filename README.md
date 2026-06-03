@@ -27,6 +27,7 @@ photobooth-core/
 │       ├── fonts/                 # 自訂字型檔案（TTF / OTF / WOFF / WOFF2）
 │       ├── accounts.json
 │       ├── fonts_meta.json        # 自訂字型元資料（按需生成）
+│       ├── gallery_config.json    # Gallery 啟用狀態 + 浮水印文字（按需生成）
 │       ├── line_config.json
 │       ├── ngrok_config.json
 │       ├── photo_codes.json
@@ -94,6 +95,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 照片防下載保護（Canvas 渲染 + blob URL 立即撤銷 + contextmenu/drag/鍵盤快捷鍵攔截 + CSS print 隱藏）
 - [x] 公開縮圖浮水印（Server-side Pillow 斜向重複浮水印；快取以 MD5 hash 命名，避免中文檔名相容問題）
 - [x] Gallery 相片動畫（相片載入後 stagger 淡入 + scale 放大進場；hover 輕微浮起；gallery header 滑入動畫）
+- [x] **Gallery 管理後台控制**（管理員可開啟/關閉 Gallery 區塊；可自訂浮水印文字最多 40 字元；浮水印變更後伺服器自動清除公開縮圖快取，前端以 `?v={wm_version}` query 參數同步使瀏覽器快取失效）
 - [x] 並發刪除防護（`list_incoming` / `get_gallery_list` 的 `stat()` 逐項 try/except，避免並發刪除導致 500）
 - [x] 取件頁面模板快取（`download.html` 改用 `_get_html()` 記憶體快取，不再逐次讀磁碟）
 - [x] 浮水印字型備援強化（`_wm_font()` 新增 `msyh.ttc` / `simsun.ttc`，確保無日文語言包環境仍可渲染中文）
@@ -185,8 +187,14 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ### 公開照片集（Gallery）
 | 方法 | 端點 | 說明 |
 |------|------|------|
-| GET | `/api/gallery` | 照片列表（公開，按拍攝時間排序）|
-| GET | `/api/gallery/thumb/{filename}` | 公開縮圖（480px WebP，含浮水印，MD5 hash 快取）|
+| GET | `/api/gallery` | 照片列表（公開，按拍攝時間排序；含 `enabled` / `wm_version` 欄位）|
+| GET | `/api/gallery/thumb/{filename}` | 公開縮圖（480px WebP，含浮水印，MD5 hash 快取；接受 `?v=` query 用於瀏覽器快取失效）|
+
+### Gallery 設定
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| GET | `/api/admin/gallery-settings` | 取得 Gallery 設定（需登入）|
+| POST | `/api/admin/gallery-settings` | 儲存 Gallery 設定（`enabled`、`watermark_text`）；浮水印變更時自動清除公開縮圖快取 |
 
 ### 照片取件
 | 方法 | 端點 | 說明 |
@@ -261,4 +269,4 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 深/淺色模式切換 | login / index | 🚧 規劃中 | 尚未擴展 |
 | 多語系（i18n）| admin.html | ✅ 完成 | `TRANSLATIONS` 物件 + `data-i18n`，支援 zh-TW / en |
 | 多語系（i18n）| login / index | 🚧 規劃中 | 尚未擴展 |
-| Gallery 頁面管理後台控制 | admin.html | 🚧 規劃中 | 管理員可控制 Gallery 顯示哪些照片（目前顯示全部 incoming 照片）|
+| Gallery 管理後台控制 | admin.html | ✅ 完成 | 照片 tab 新增 Gallery 設定卡片：開/關切換（toggle switch）+ 浮水印文字自訂；浮水印變更自動清伺服器快取並以 `wm_version` 使瀏覽器快取失效 |

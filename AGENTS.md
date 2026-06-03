@@ -61,6 +61,10 @@ backend/app/
 - 管理端縮圖：`storage/thumbs/{filename}.thumb.webp`（含原始檔名）
 - 公開縮圖（含浮水印）：`storage/thumbs/pub_{md5(filename)}.webp`（hash 命名，避免中文/特殊字元相容問題）
 
+**Gallery 設定：**
+- `storage/gallery_config.json` — `{"enabled": true, "watermark_text": "..."}` （預設值定義在 `config.py` 的 `GALLERY_CONFIG_DEFAULTS`）
+- 浮水印文字變更時，呼叫 `_invalidate_public_thumbs()` 刪除所有 `pub_*.webp`；`/api/gallery` 回應帶 `wm_version`（浮水印 MD5 前 8 碼），前端縮圖 URL 帶 `?v={wm_version}` 使瀏覽器快取同步失效
+
 ---
 
 ## 程式碼慣例
@@ -128,6 +132,10 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-03 | Login form 加 `method="post" action="/api/auth/login"`（CWE-598）| 表單未設 method 屬性時預設為 GET；若 JS 停用，帳號密碼會出現在 URL query string，被 server log / browser history 記錄；加上 method/action 確保即使 JS 停用也走 POST |
 | 2026-06-03 | CSP header 全面強化 | 原 CSP 只設 3 條（frame-ancestors / object-src / base-uri），ZAP 掃出 4 個 Medium 警告：未定義 form-action（無 fallback）、script-src / style-src / 其他資源指令未設（等同允許所有來源）；補上 default-src / script-src / style-src / font-src / img-src / connect-src / form-action |
 | 2026-06-03 | Axios CDN 加 SRI（Subresource Integrity）+ 固定版本 | 直接載入 `npm/axios/dist/axios.min.js` 無版本鎖定，CDN 若被汙染可注入任意 JS；改為 `axios@1.16.1` 並加 `integrity="sha384-..."` + `crossorigin="anonymous"`，瀏覽器驗證 hash 失敗時拒絕執行 |
+| 2026-06-03 | Gallery 設定存入 `gallery_config.json`，不拆散到 `index_text.json` | Gallery 啟用狀態與浮水印文字與首頁文字是不同的功能域；分開檔案讓 reset 時可精確選擇是否清除 gallery 設定 |
+| 2026-06-03 | 浮水印文字變更後呼叫 `_invalidate_public_thumbs()` 清空快取 | 浮水印已 bake 進縮圖 WebP；若不清快取，舊浮水印文字繼續顯示直到永遠（`max-age=86400` 且快取命名只用 filename hash）；強制清除確保下次請求立即重新生成 |
+| 2026-06-03 | `/api/gallery` 加入 `enabled` 欄位；index.html 頁面載入時先 fetch 一次 | 原本 gallery lazy-load 在 scroll 25% 時才觸發；disabled 時 scroll-hint 仍可見，誘導用戶嘗試捲動；提早在 `DOMContentLoaded` 後立即 fetch，disabled 則同步隱藏 scroll-hint 與 gallery-section |
+| 2026-06-03 | 縮圖 URL 帶 `?v={wm_version}` query 使瀏覽器快取失效 | 公開縮圖帶 `Cache-Control: private, max-age=86400`；伺服器端刪除舊快取後，瀏覽器仍會使用已快取的回應長達 24 小時；`wm_version` 是浮水印文字的 MD5 前 8 碼，浮水印一改 URL 就變，瀏覽器視為新資源強制重新 fetch，無需修改 Cache-Control 設定 |
 
 ---
 
@@ -145,6 +153,8 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**縮減 `add_security_headers` 中的 CSP 指令 — 若需新增外部資源來源（CDN、字型服務），應將其加入對應指令白名單，而非移除限制
 - **不得**移除 `axios@1.16.1` script tag 的 `integrity` 屬性，或將 CDN URL 改回無版本形式（`npm/axios/dist/axios.min.js`）；升級 axios 版本時必須同步更新 URL 和 hash
 - **不得**在 login form 移除 `method="post"` 屬性
+- **不得**在 `update_gallery_settings` 移除 `_invalidate_public_thumbs()` 呼叫 — 浮水印已 bake 進縮圖，不清快取舊浮水印永不消失
+- **不得**在 `loadPhotoToCanvas` 移除 `?v={wm_version}` query — 這是唯一能繞過瀏覽器 24 小時快取使浮水印變更即時生效的機制
 
 ---
 

@@ -46,6 +46,7 @@ from app.config import (
     FONTS_DIR, FONTS_META_FILE,
     GOOGLE_FONTS, SUPPORTED_FONT_EXTS, MAX_FONT_SIZE_BYTES,
     SECURE_COOKIES, ENABLE_API_DOCS,
+    GALLERY_CONFIG_FILE, GALLERY_CONFIG_DEFAULTS,
 )
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
@@ -194,6 +195,32 @@ def _load_fonts_meta() -> List[Dict]:
 
 def _save_fonts_meta(fonts: List[Dict]) -> None:
     FONTS_META_FILE.write_text(json.dumps(fonts, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_gallery_config() -> Dict[str, Any]:
+    if GALLERY_CONFIG_FILE.exists():
+        try:
+            saved = json.loads(GALLERY_CONFIG_FILE.read_text(encoding="utf-8"))
+            return {**GALLERY_CONFIG_DEFAULTS, **{k: v for k, v in saved.items() if k in GALLERY_CONFIG_DEFAULTS}}
+        except Exception:
+            pass
+    return dict(GALLERY_CONFIG_DEFAULTS)
+
+
+def _save_gallery_config(data: Dict[str, Any]) -> None:
+    GALLERY_CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _invalidate_public_thumbs() -> None:
+    """刪除所有公開縮圖快取（浮水印文字變更後呼叫）。"""
+    try:
+        for p in THUMB_DIR.glob("pub_*.webp"):
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    except Exception as e:
+        logger.warning(f"⚠️ 清除公開縮圖快取失敗: {e}")
 
 
 def _load_index_text() -> Dict[str, Any]:
@@ -393,6 +420,10 @@ class IndexTextRequest(BaseModel):
     middle_text: str
     font: str
 
+
+class GallerySettingsRequest(BaseModel):
+    enabled: bool
+    watermark_text: str
 
 
 # ==================== 輔助函數 ====================
@@ -643,6 +674,12 @@ async def save_index_text(request: IndexTextRequest, pb_session: Optional[str] =
 
 @app.get("/api/gallery", tags=["Public"], summary="公開照片集列表")
 async def get_gallery_list() -> Dict[str, Any]:
+    gallery_cfg = _load_gallery_config()
+    enabled = gallery_cfg.get("enabled", True)
+    wm_text = gallery_cfg.get("watermark_text") or GALLERY_CONFIG_DEFAULTS["watermark_text"]
+    wm_version = hashlib.md5(wm_text.encode()).hexdigest()[:8]
+    if not enabled:
+        return {"enabled": False, "photos": [], "count": 0, "wm_version": wm_version}
     try:
         paths = []
         for p in INCOMING_DIR.iterdir():
@@ -652,9 +689,9 @@ async def get_gallery_list() -> Dict[str, Any]:
                 except (FileNotFoundError, OSError):
                     pass
         paths.sort(key=lambda x: x[1], reverse=True)
-        return {"photos": [p.name for p, _ in paths], "count": len(paths)}
+        return {"enabled": True, "photos": [p.name for p, _ in paths], "count": len(paths), "wm_version": wm_version}
     except Exception:
-        return {"photos": [], "count": 0}
+        return {"enabled": True, "photos": [], "count": 0, "wm_version": wm_version}
 
 
 @app.get("/api/gallery/thumb/{filename}", tags=["Public"], summary="公開照片縮圖（含浮水印）")
@@ -672,8 +709,10 @@ async def get_gallery_thumb_public(filename: str) -> FileResponse:
     thumb_path = _pub_thumb_path(filename)
     if not thumb_path.exists():
         try:
+            gallery_cfg = _load_gallery_config()
+            wm_text = gallery_cfg.get("watermark_text") or GALLERY_CONFIG_DEFAULTS["watermark_text"]
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, _generate_public_thumbnail, src_path, thumb_path)
+            await loop.run_in_executor(None, _generate_public_thumbnail, src_path, thumb_path, wm_text)
         except Exception as e:
             logger.error(f"公開縮圖生成失敗 {filename}: {e}")
             raise HTTPException(status_code=500, detail="縮圖生成失敗")
@@ -682,6 +721,30 @@ async def get_gallery_thumb_public(filename: str) -> FileResponse:
         media_type="image/webp",
         headers={"Cache-Control": "private, max-age=86400"},
     )
+
+
+# ==================== Gallery 設定 API ====================
+
+@app.get(f"{API_ADMIN_PREFIX}/gallery-settings", tags=["Gallery"])
+async def get_gallery_settings(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
+    _require_auth(pb_session)
+    return _load_gallery_config()
+
+
+@app.post(f"{API_ADMIN_PREFIX}/gallery-settings", tags=["Gallery"])
+async def update_gallery_settings(
+    request: GallerySettingsRequest,
+    pb_session: Optional[str] = Cookie(default=None),
+) -> Dict[str, str]:
+    _require_auth(pb_session)
+    wm_text = request.watermark_text.strip()[:40] or GALLERY_CONFIG_DEFAULTS["watermark_text"]
+    current = _load_gallery_config()
+    watermark_changed = current.get("watermark_text") != wm_text
+    data = {"enabled": request.enabled, "watermark_text": wm_text}
+    _save_gallery_config(data)
+    if watermark_changed:
+        _invalidate_public_thumbs()
+    return {"message": "Gallery 設定已儲存"}
 
 
 # ==================== 自訂字型 API ====================
@@ -788,7 +851,7 @@ def _pub_thumb_path(filename: str) -> Path:
     return THUMB_DIR / f"pub_{key}.webp"
 
 
-def _generate_public_thumbnail(src_path: Path, thumb_path: Path) -> None:
+def _generate_public_thumbnail(src_path: Path, thumb_path: Path, watermark_text: str = "") -> None:
     """縮圖 + 浮水印，供公開照片集使用（與管理端縮圖分開快取）。"""
     img = ImageOps.exif_transpose(
         Image.open(io.BytesIO(src_path.read_bytes()))
@@ -798,7 +861,7 @@ def _generate_public_thumbnail(src_path: Path, thumb_path: Path) -> None:
 
     font_size = max(13, w // 16)
     font = _wm_font(font_size)
-    text = "風嶺拍貼機"
+    text = watermark_text or GALLERY_CONFIG_DEFAULTS["watermark_text"]
 
     # Measure text on a dummy surface first
     _tmp_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
