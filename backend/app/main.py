@@ -280,12 +280,19 @@ manager = ConnectionManager()
 # ==================== 應用程式生命週期 ====================
 
 async def _session_cleanup_task() -> None:
-    """每小時清理一次過期 session，防止記憶體無限成長。"""
+    """每小時清理一次過期 session 與速率限制紀錄，防止記憶體無限成長。"""
     while True:
         await asyncio.sleep(3600)
         removed = auth.cleanup_expired_sessions()
         if removed:
             logger.info(f"✓ 已清理 {removed} 個過期 session")
+        now = time.monotonic()
+        cutoff = now - _CODE_RATE_WINDOW
+        stale_ips = [ip for ip, log in _code_request_log.items() if not any(t > cutoff for t in log)]
+        for ip in stale_ips:
+            del _code_request_log[ip]
+        if stale_ips:
+            logger.debug(f"✓ 已清理 {len(stale_ips)} 個過期 IP 速率限制記錄")
 
 
 @asynccontextmanager
@@ -628,9 +635,15 @@ async def save_index_text(request: IndexTextRequest, pb_session: Optional[str] =
 @app.get("/api/gallery", tags=["Public"], summary="公開照片集列表")
 async def get_gallery_list() -> Dict[str, Any]:
     try:
-        paths = [p for p in INCOMING_DIR.iterdir() if p.suffix.lower() in SUPPORTED_IMAGE_FORMATS]
-        paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        return {"photos": [p.name for p in paths], "count": len(paths)}
+        paths = []
+        for p in INCOMING_DIR.iterdir():
+            if p.suffix.lower() in SUPPORTED_IMAGE_FORMATS:
+                try:
+                    paths.append((p, p.stat().st_mtime))
+                except (FileNotFoundError, OSError):
+                    pass
+        paths.sort(key=lambda x: x[1], reverse=True)
+        return {"photos": [p.name for p, _ in paths], "count": len(paths)}
     except Exception:
         return {"photos": [], "count": 0}
 
@@ -717,9 +730,15 @@ async def delete_font(filename: str, pb_session: Optional[str] = Cookie(default=
 async def list_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
     _require_auth(pb_session)
     try:
-        paths = [p for p in INCOMING_DIR.iterdir() if p.suffix.lower() in SUPPORTED_IMAGE_FORMATS]
-        paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        photos = [{"filename": p.name, "code": _photo_codes.get(p.name)} for p in paths]
+        paths = []
+        for p in INCOMING_DIR.iterdir():
+            if p.suffix.lower() in SUPPORTED_IMAGE_FORMATS:
+                try:
+                    paths.append((p, p.stat().st_mtime))
+                except (FileNotFoundError, OSError):
+                    pass
+        paths.sort(key=lambda x: x[1], reverse=True)
+        photos = [{"filename": p.name, "code": _photo_codes.get(p.name)} for p, _ in paths]
         return {"photos": photos, "count": len(photos)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"無法取得照片列表: {e}")
@@ -738,6 +757,8 @@ def _generate_thumbnail(src_path: Path, thumb_path: Path) -> None:
 def _wm_font(size: int) -> ImageFont.ImageFont:
     candidates = [
         r"C:\Windows\Fonts\meiryo.ttc",
+        r"C:\Windows\Fonts\msyh.ttc",
+        r"C:\Windows\Fonts\simsun.ttc",
         r"C:\Windows\Fonts\msgothic.ttc",
         r"C:\Windows\Fonts\arial.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -836,6 +857,9 @@ async def delete_incoming(filename: str, pb_session: Optional[str] = Cookie(defa
     thumb_path = THUMB_DIR / f"{filename}.thumb.webp"
     if thumb_path.exists():
         thumb_path.unlink()
+    pub_thumb = _pub_thumb_path(filename)
+    if pub_thumb.exists():
+        pub_thumb.unlink()
     if filename in _photo_codes:
         code = _photo_codes.pop(filename)
         _code_to_file.pop(code, None)
@@ -855,6 +879,9 @@ async def clear_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Di
                 thumb_path = THUMB_DIR / f"{p.name}.thumb.webp"
                 if thumb_path.exists():
                     thumb_path.unlink()
+                pub_thumb = _pub_thumb_path(p.name)
+                if pub_thumb.exists():
+                    pub_thumb.unlink()
                 if p.name in _photo_codes:
                     code = _photo_codes.pop(p.name)
                     _code_to_file.pop(code, None)
@@ -967,8 +994,10 @@ async def photo_download_page(code: str, request: Request) -> HTMLResponse:
     filename = _lookup_code(code)
     if not filename or not (INCOMING_DIR / filename).exists():
         return HTMLResponse("<h3 style='font-family:sans-serif;text-align:center;margin-top:4rem'>找不到照片，取件碼可能已過期或不存在。</h3>", status_code=404)
-    template_path = TEMPLATE_DIR / "download.html"
-    html = template_path.read_text(encoding="utf-8").replace("{code}", code)
+    try:
+        html = _get_html("download.html").replace("{code}", code)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="頁面不存在")
     return HTMLResponse(html)
 
 

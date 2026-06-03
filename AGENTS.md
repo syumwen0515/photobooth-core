@@ -120,6 +120,11 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-03 | 公開縮圖快取改用 MD5 hash 命名 | `THUMB_DIR / f"{filename}.pub.webp"` 當 filename 為中文時，Windows 的 `Path.exists()` 可能回傳不一致結果；改以 `pub_{md5(filename)}.webp` 確保快取路徑永遠是 ASCII，消除 Unicode 路徑相容問題 |
 | 2026-06-03 | Pillow 讀圖改用 BytesIO | `Image.open(unicode_path)` 在部分 Windows 環境（特別是中文路徑）不穩定；改用 `Image.open(io.BytesIO(path.read_bytes()))` 讓 Pillow 只處理 bytes，路徑讀取交給 Python pathlib |
 | 2026-06-03 | Gallery 相片卡片進場動畫：opacity 用 `@keyframes`，transform 用 `transition` | 若對同一屬性同時套用 animation fill-mode 與 hover transition，animation 層疊優先級較高，hover 的 transition 會被覆蓋；將 opacity（revealFade animation）與 transform（CSS transition）分屬不同機制，消除衝突：scale 0.96→1 由 transition 負責，opacity 0→1 由 animation 負責，hover 的 scale+translateY 仍可正常 transition |
+| 2026-06-03 | 刪除/清除照片時同步清除兩種縮圖快取 | `delete_incoming` 和 `clear_incoming` 原本只刪除管理端縮圖（`{filename}.thumb.webp`），遺漏公開縮圖（`pub_{md5}.webp`），導致 `storage/thumbs/` 累積孤兒快取；修正後呼叫 `_pub_thumb_path(filename)` 一併刪除 |
+| 2026-06-03 | `list_incoming` / `get_gallery_list` 的 `stat()` 改為逐項 try/except | 兩個函數原先用 list comprehension 呼叫 `p.stat().st_mtime`，若另一請求在 `iterdir()` 與 `stat()` 之間刪除該檔案，會拋出 `FileNotFoundError` 使整個 API 500；改為逐項 try/except 跳過消失的檔案 |
+| 2026-06-03 | `photo_download_page` 改用 `_get_html()` 快取讀取 `download.html` | 原先每次取件頁面請求都直接 `read_text()` 讀磁碟，未使用與其他頁面一致的記憶體快取；改用 `_get_html("download.html")` 後首次後快取在記憶體，後續請求不再觸碰磁碟 |
+| 2026-06-03 | `_wm_font()` 新增 `msyh.ttc`（微軟正黑體）與 `simsun.ttc`（新細明體）備援 | 原先只嘗試 meiryo（需日文語言支援）與 msgothic；若未安裝日文語言包，浮水印中文字符渲染失敗（顯示方塊）；加入更常見的繁/簡中文字型優先順序 |
+| 2026-06-03 | `_session_cleanup_task` 每小時順帶清理 `_code_request_log` 中的孤兒 IP 鍵 | IP 速率限制 dict 的值（timestamp list）會被清空，但鍵本身（IP 字串）永不移除，造成緩慢的記憶體增長；每小時清理一次所有 window 內無有效記錄的 IP 鍵 |
 
 ---
 

@@ -81,7 +81,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] WebSocket 即時推播到管理後台（連線管理使用 set，斷線移除 O(1)）
 - [x] 取件碼自動指派（6 碼，去除易混淆字元 0/O/1/I）
 - [x] 照片取件頁面（`/download/{code}`）
-- [x] 縮圖快取系統（480px WebP，`storage/thumbs/`，按需生成；以 `FileResponse` 串流回傳）
+- [x] 縮圖快取系統（480px WebP，`storage/thumbs/`，按需生成；以 `FileResponse` 串流回傳；刪除/清除照片時同步移除管理端與公開縮圖兩份快取）
 - [x] LINE BOT 整合（Webhook / 輸入取件碼查詢）
 - [x] ngrok 外網穿透（API + 管理 UI）
 - [x] 系統一鍵重置（清除所有照片、設定、取件碼、首頁文字、自訂字型）
@@ -94,6 +94,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 照片防下載保護（Canvas 渲染 + blob URL 立即撤銷 + contextmenu/drag/鍵盤快捷鍵攔截 + CSS print 隱藏）
 - [x] 公開縮圖浮水印（Server-side Pillow 斜向重複浮水印；快取以 MD5 hash 命名，避免中文檔名相容問題）
 - [x] Gallery 相片動畫（相片載入後 stagger 淡入 + scale 放大進場；hover 輕微浮起；gallery header 滑入動畫）
+- [x] 並發刪除防護（`list_incoming` / `get_gallery_list` 的 `stat()` 逐項 try/except，避免並發刪除導致 500）
+- [x] 取件頁面模板快取（`download.html` 改用 `_get_html()` 記憶體快取，不再逐次讀磁碟）
+- [x] 浮水印字型備援強化（`_wm_font()` 新增 `msyh.ttc` / `simsun.ttc`，確保無日文語言包環境仍可渲染中文）
+- [x] IP 速率限制記憶體清理（`_session_cleanup_task` 每小時一併清理 `_code_request_log` 孤兒鍵）
 
 ## 工作流程
 
@@ -242,7 +246,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.4.2 | **更新**: 2026-06-03 | **狀態**: 生產就緒
+**版本**: 0.4.3 | **更新**: 2026-06-03 | **狀態**: 生產就緒
 
 ## 開發中 / 規劃中功能
 
