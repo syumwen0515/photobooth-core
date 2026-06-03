@@ -1,45 +1,102 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-TW" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>拍貼機 — 管理後台</title>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300;400&display=swap">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
-                        'wa-cream': '#f5f5f0',
-                        'wa-gray': '#2b2b2b',
-                        'wa-light': '#e8e8e3',
-                        'wa-blue': '#b8c5d6',
+                        'wa-cream': 'var(--wa-cream)',
+                        'wa-gray':  'var(--wa-gray)',
+                        'wa-light': 'var(--wa-light)',
+                        'wa-blue':  '#b8c5d6',
                     }
                 }
             }
         }
     </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500&display=swap');
-        body { font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        .wa-divider { height: 1px; background: linear-gradient(to right, transparent, #b8c5d6, transparent); }
-        .wa-hover { transition: all 0.3s ease; }
-        .wa-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        /* ── Theme tokens ───────────────────────────── */
+        :root {
+            --wa-cream:  #f5f5f0;
+            --wa-gray:   #2b2b2b;
+            --wa-light:  #e8e8e3;
+            --bg-card:   #ffffff;
+            --bg-input:  #ffffff;
+            --border:    #e8e8e3;
+            --text-muted: rgba(184, 197, 214, 0.7);
+            --text-main: #2b2b2b;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        [data-theme="dark"] {
+            --wa-cream:  #111118;
+            --wa-gray:   #e8e8e3;
+            --wa-light:  #2a2a36;
+            --bg-card:   #1a1a26;
+            --bg-input:  #14141e;
+            --border:    #2a2a36;
+            --text-muted: rgba(184, 197, 214, 0.45);
+            --text-main: #e8e8e3;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background: var(--wa-cream);
+            color: var(--wa-gray);
+            transition: background 0.3s, color 0.3s;
+        }
+
+        /* Corner bracket decoration */
+        .frame-corner {
+            position: absolute;
+            width: 22px;
+            height: 22px;
+        }
+        .frame-corner::before,
+        .frame-corner::after {
+            content: '';
+            position: absolute;
+            background: rgba(184, 197, 214, 0.45);
+        }
+        .frame-corner::before { width: 100%; height: 1px; top: 0; left: 0; }
+        .frame-corner::after  { width: 1px; height: 100%; top: 0; left: 0; }
+        .frame-corner.tr { transform: rotate(90deg);  top: 0; right: 0; }
+        .frame-corner.bl { transform: rotate(270deg); bottom: 0; left: 0; }
+        .frame-corner.br { transform: rotate(180deg); bottom: 0; right: 0; }
+
+        /* Vertical writing decoration */
+        .vert-label {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            font-size: 0.58rem;
+            font-weight: 300;
+            letter-spacing: 0.3em;
+            color: rgba(184, 197, 214, 0.55);
+        }
 
         /* Tab nav */
         .tab-btn {
             border-bottom: 2px solid transparent;
             margin-bottom: -1px;
             padding: 0.5rem 1.25rem;
-            font-size: 0.875rem;
+            font-size: 0.8rem;
             font-weight: 300;
+            letter-spacing: 0.08em;
             color: #b8c5d6;
             transition: color 0.2s, border-color 0.2s;
             white-space: nowrap;
         }
-        .tab-btn:hover { color: #2b2b2b; }
-        .tab-btn.active { border-bottom-color: #2b2b2b; color: #2b2b2b; }
+        .tab-btn:hover { color: var(--wa-gray); }
+        .tab-btn.active { border-bottom-color: var(--wa-gray); color: var(--wa-gray); }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
 
@@ -47,60 +104,235 @@
         .acc-body {
             overflow: hidden;
             max-height: 0;
-            transition: max-height 0.3s ease, padding 0.3s ease;
+            transition: max-height 0.3s ease;
         }
-        .acc-body.open {
-            max-height: 2000px;
-        }
-        .acc-arrow {
-            transition: transform 0.25s ease;
-            flex-shrink: 0;
-        }
+        .acc-body.open { max-height: 2000px; }
+        .acc-arrow { transition: transform 0.25s ease; flex-shrink: 0; }
         .acc-arrow.open { transform: rotate(180deg); }
+
+        .acc-trigger:hover { background: rgba(184, 197, 214, 0.06); }
+
+        /* Card */
+        .wa-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+            transition: background 0.3s, border-color 0.3s;
+        }
+
+        /* Input / Select */
+        .wa-input, .wa-select {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 0.375rem 0.625rem;
+            font-size: 0.75rem;
+            font-weight: 300;
+            font-family: 'Noto Sans JP', sans-serif;
+            color: var(--text-main);
+            transition: border-color 0.2s, background 0.3s, color 0.3s;
+            outline: none;
+        }
+        .wa-input:focus, .wa-select:focus { border-color: #b8c5d6; }
+        .wa-input::placeholder { color: rgba(184, 197, 214, 0.45); }
+        .wa-select option { background: var(--bg-input); color: var(--text-main); }
+
+        /* Primary button */
+        .btn-primary {
+            display: inline-block;
+            padding: 6px 18px;
+            font-size: 0.72rem;
+            font-weight: 300;
+            letter-spacing: 0.1em;
+            background: #b8c5d6;
+            color: #fff;
+            border: 1px solid #b8c5d6;
+            border-radius: 2px;
+            transition: all 0.22s ease;
+            cursor: pointer;
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .btn-primary:hover { background: #a3b3c6; border-color: #a3b3c6; }
+        .btn-primary:active { transform: scale(0.97); }
+
+        /* Ghost / outline button */
+        .btn-outline {
+            display: inline-block;
+            padding: 6px 18px;
+            font-size: 0.72rem;
+            font-weight: 300;
+            letter-spacing: 0.08em;
+            background: transparent;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            transition: all 0.22s ease;
+            cursor: pointer;
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .btn-outline:hover { border-color: #b8c5d6; color: var(--text-main); }
+        .btn-outline:active { transform: scale(0.97); }
+
+        /* Danger button */
+        .btn-danger {
+            display: inline-block;
+            padding: 6px 18px;
+            font-size: 0.72rem;
+            font-weight: 300;
+            letter-spacing: 0.08em;
+            background: transparent;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            transition: all 0.22s ease;
+            cursor: pointer;
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .btn-danger:hover { border-color: rgba(248, 113, 113, 0.55); color: rgba(220, 60, 60, 0.85); }
+        .btn-danger:active { transform: scale(0.97); }
+
+        /* Photo card delete button */
+        .del-btn {
+            width: 100%;
+            padding: 4px 0;
+            font-size: 0.75rem;
+            font-weight: 300;
+            border-radius: 3px;
+            background: transparent;
+            color: var(--text-main);
+            border: none;
+            cursor: pointer;
+            transition: color 0.2s, background 0.2s;
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .del-btn:hover { color: rgba(220, 60, 60, 0.85); background: rgba(248, 113, 113, 0.08); }
+
+        /* Icon button (theme / lang toggles) */
+        .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 10px;
+            font-size: 0.68rem;
+            font-weight: 300;
+            letter-spacing: 0.06em;
+            background: transparent;
+            color: #b8c5d6;
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            transition: all 0.22s ease;
+            cursor: pointer;
+            font-family: 'Noto Sans JP', sans-serif;
+            gap: 4px;
+        }
+        .btn-icon:hover { border-color: #b8c5d6; color: var(--text-main); }
+        .btn-icon:active { transform: scale(0.97); }
+
+        /* Entrance animation */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .anim { animation: fadeUp 0.8s ease forwards; opacity: 0; }
+        .d1 { animation-delay: 0.05s; }
+        .d2 { animation-delay: 0.18s; }
+        .d3 { animation-delay: 0.3s; }
+        .d4 { animation-delay: 0.42s; }
+        .d5 { animation-delay: 0.54s; }
+
+        /* Inline text colors using CSS vars */
+        .text-wa-gray  { color: var(--wa-gray); }
+        .text-wa-blue  { color: #b8c5d6; }
+        .border-wa-light { border-color: var(--border); }
+        .bg-white      { background: var(--bg-card); }
+        .bg-wa-cream   { background: var(--wa-cream); }
     </style>
 </head>
-<body class="bg-wa-cream text-wa-gray min-h-screen">
+<body class="min-h-screen relative">
 
-<div class="max-w-4xl mx-auto px-6 py-12">
+<!-- Frame corner decorations -->
+<div class="fixed inset-5 pointer-events-none" style="z-index: 5;">
+    <div class="frame-corner" style="top:0;left:0;"></div>
+    <div class="frame-corner tr"></div>
+    <div class="frame-corner bl"></div>
+    <div class="frame-corner br"></div>
+</div>
+
+<!-- Vertical side labels -->
+<div class="fixed left-5 top-1/2 -translate-y-1/2 pointer-events-none" style="z-index: 5;">
+    <span class="vert-label" data-i18n="vert.admin">管理後台 · ADMIN</span>
+</div>
+<div class="fixed right-5 top-1/2 -translate-y-1/2 pointer-events-none" style="z-index: 5;">
+    <span class="vert-label">風嶺 · CCIT</span>
+</div>
+
+<div class="max-w-4xl mx-auto px-8 py-12">
 
     <!-- Header -->
-    <header class="mb-8">
-        <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
-            <a href="/" class="text-xs text-wa-blue font-light hover:underline underline-offset-2">← 首頁</a>
-            <div class="flex items-center gap-3">
-                <button onclick="logout()"
-                        class="px-3 py-1.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-red-300 hover:text-red-400 transition-all">
+    <header class="mb-10">
+        <div class="anim d1 flex items-center justify-between mb-8 flex-wrap gap-3">
+            <a href="/" class="text-xs text-wa-blue font-light hover:underline underline-offset-2"
+               style="letter-spacing:0.08em;" data-i18n="nav.home">← 首頁</a>
+            <div class="flex items-center gap-2">
+                <!-- Theme toggle -->
+                <button id="themeToggle" onclick="toggleTheme()" class="btn-icon" title="切換主題">
+                    <span id="themeIcon">☀</span>
+                    <span id="themeLabel">淺色</span>
+                </button>
+                <!-- Language toggle -->
+                <button id="langToggle" onclick="toggleLang()" class="btn-icon" title="Toggle language">
+                    <span id="langLabel">EN</span>
+                </button>
+                <!-- Logout -->
+                <button onclick="logout()" class="btn-danger" style="padding:4px 14px; font-size:0.7rem;" data-i18n="nav.logout">
                     登出
                 </button>
             </div>
         </div>
-        <div class="flex flex-col items-center text-center mb-8">
-            <h1 class="text-3xl font-light tracking-wide text-wa-gray mb-2">拍貼機</h1>
-            <p class="text-sm text-wa-blue font-light">管理後台</p>
+
+        <!-- Brand -->
+        <div class="anim d2 flex flex-col items-center text-center mb-8">
+            <div class="flex items-center gap-3 mb-5">
+                <div style="width:32px; height:1px; background:rgba(184,197,214,0.45);"></div>
+                <div style="width:4px; height:4px; border:1px solid rgba(184,197,214,0.6); transform:rotate(45deg);"></div>
+                <div style="width:32px; height:1px; background:rgba(184,197,214,0.45);"></div>
+            </div>
+            <h1 style="font-size:clamp(1.6rem,4vw,2.4rem); font-weight:100; letter-spacing:0.4em;
+                       text-indent:0.4em; color:var(--wa-gray); line-height:1;" data-i18n="brand.title">拍貼機</h1>
+            <div class="flex flex-col items-center mt-3">
+                <div style="width:1px; height:18px; background:linear-gradient(to bottom, rgba(184,197,214,0.45), rgba(184,197,214,0.1));"></div>
+                <p style="font-size:0.58rem; letter-spacing:0.42em; text-indent:0.42em;
+                          color:rgba(184,197,214,0.7); font-weight:300; margin:7px 0;" data-i18n="brand.sub">ADMIN · MANAGEMENT</p>
+                <div style="width:1px; height:18px; background:linear-gradient(to bottom, rgba(184,197,214,0.1), transparent);"></div>
+            </div>
         </div>
-        <div class="wa-divider"></div>
+
+        <div class="anim d3" style="height:1px; background:linear-gradient(to right, transparent, #b8c5d6, transparent); opacity:0.4;"></div>
     </header>
 
     <!-- Tab Navigation -->
-    <nav class="flex border-b border-wa-light mb-10">
-        <button class="tab-btn active" data-tab="appearance">外觀</button>
-        <button class="tab-btn" data-tab="services">服務</button>
-        <button class="tab-btn" data-tab="photos">照片</button>
-        <button class="tab-btn" data-tab="system">系統</button>
+    <nav class="anim d3 flex border-b border-wa-light mb-10">
+        <button class="tab-btn active" data-tab="appearance" data-i18n="tab.appearance">外觀</button>
+        <button class="tab-btn" data-tab="services" data-i18n="tab.services">服務</button>
+        <button class="tab-btn" data-tab="photos" data-i18n="tab.photos">照片</button>
+        <button class="tab-btn" data-tab="system" data-i18n="tab.system">系統</button>
     </nav>
 
-    <!-- ════════════════════════════════════════════════════════ -->
-    <!-- Tab: 外觀                                               -->
-    <!-- ════════════════════════════════════════════════════════ -->
-    <div id="tab-appearance" class="tab-panel active space-y-3">
+    <!-- ════════════════════════════════════════════════════ -->
+    <!-- Tab: 外觀                                           -->
+    <!-- ════════════════════════════════════════════════════ -->
+    <div id="tab-appearance" class="tab-panel active anim d4 space-y-3">
 
         <!-- ▸ 首頁底圖 -->
-        <div class="bg-white rounded-xl border border-wa-light overflow-hidden">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 hover:bg-wa-cream/60 transition-colors"
+        <div class="wa-card">
+            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
                     data-acc="bg">
                 <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-wa-gray">首頁底圖</span>
-                    <span class="text-xs text-wa-blue font-light">首頁背景圖片管理</span>
+                    <span class="text-base font-light text-wa-gray" data-i18n="bg.title">首頁底圖</span>
+                    <span class="text-xs text-wa-blue font-light" data-i18n="bg.desc">首頁背景圖片管理</span>
                 </div>
                 <svg class="acc-arrow open w-4 h-4 text-wa-blue" data-acc="bg"
                      fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -111,37 +343,36 @@
                 <div class="px-5 pb-5 space-y-4 border-t border-wa-light">
                     <div class="pt-4">
                         <div id="bgPreview" class="hidden mb-3">
-                            <p class="text-xs text-wa-blue font-light mb-2">目前底圖</p>
+                            <p class="text-xs text-wa-blue font-light mb-2" data-i18n="bg.current">目前底圖</p>
                             <img id="bgImg" src="" alt="背景圖"
                                  class="w-full max-w-xs rounded border border-wa-light"
-                                 style="max-height: 160px; object-fit: cover;">
+                                 style="max-height:160px; object-fit:cover;">
                         </div>
-                        <div id="noBg" class="text-xs text-wa-blue font-light mb-3">
+                        <div id="noBg" class="text-xs text-wa-blue font-light mb-3" data-i18n="bg.empty">
                             尚未上傳底圖，首頁將顯示預設漸層背景。
                         </div>
                         <div class="flex gap-2 flex-wrap">
-                            <label class="cursor-pointer px-4 py-1.5 bg-wa-blue text-white text-xs font-light rounded hover:bg-wa-blue/90 transition-all active:scale-95">
+                            <label class="cursor-pointer btn-primary" data-i18n="bg.upload">
                                 上傳底圖
                                 <input type="file" id="bgFile" accept=".jpg,.jpeg,.png,.webp" class="hidden" onchange="uploadBg(this)">
                             </label>
-                            <button id="deleteBgBtn" onclick="deleteBg()"
-                                    class="hidden px-4 py-1.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-red-300 hover:text-red-400 transition-all">
+                            <button id="deleteBgBtn" onclick="deleteBg()" class="hidden btn-danger" data-i18n="bg.delete">
                                 移除底圖
                             </button>
                         </div>
-                        <p class="text-xs text-wa-blue/60 font-light mt-2">支援 JPG / PNG / WebP，建議尺寸 1920×1080 或以上。</p>
+                        <p class="text-xs text-wa-blue/60 font-light mt-2" data-i18n="bg.hint">支援 JPG / PNG / WebP，建議尺寸 1920×1080 或以上。</p>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- ▸ 自訂字型 -->
-        <div class="bg-white rounded-xl border border-wa-light overflow-hidden">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 hover:bg-wa-cream/60 transition-colors"
+        <div class="wa-card">
+            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
                     data-acc="customfonts">
                 <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-wa-gray">自訂字型</span>
-                    <span class="text-xs text-wa-blue font-light">上傳本地字型檔案</span>
+                    <span class="text-base font-light text-wa-gray" data-i18n="fonts.title">自訂字型</span>
+                    <span class="text-xs text-wa-blue font-light" data-i18n="fonts.desc">上傳本地字型檔案</span>
                 </div>
                 <svg class="acc-arrow w-4 h-4 text-wa-blue" data-acc="customfonts"
                      fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -152,28 +383,28 @@
                 <div class="px-5 pb-5 space-y-4 border-t border-wa-light">
                     <div class="pt-4 space-y-3">
                         <div id="customFontList" class="space-y-2">
-                            <div class="text-xs text-wa-blue/60 font-light">載入中…</div>
+                            <div class="text-xs text-wa-blue/60 font-light" data-i18n="loading">載入中…</div>
                         </div>
                         <div class="flex items-center gap-3 flex-wrap pt-1">
-                            <label id="fontUploadLabel" class="cursor-pointer px-4 py-1.5 bg-wa-blue text-white text-xs font-light rounded hover:bg-wa-blue/90 transition-all active:scale-95">
+                            <label id="fontUploadLabel" class="cursor-pointer btn-primary" data-i18n="fonts.upload">
                                 上傳字型
                                 <input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" class="hidden" onchange="uploadFont(this)">
                             </label>
                             <span id="fontUploadMsg" class="text-xs font-light text-wa-blue hidden"></span>
                         </div>
-                        <p class="text-xs text-wa-blue/60 font-light">支援 TTF / OTF / WOFF / WOFF2，上傳後可在「首頁文字」字體選單中選用。</p>
+                        <p class="text-xs text-wa-blue/60 font-light" data-i18n="fonts.hint">支援 TTF / OTF / WOFF / WOFF2，上傳後可在「首頁文字」字體選單中選用。</p>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- ▸ 首頁文字 -->
-        <div class="bg-white rounded-xl border border-wa-light overflow-hidden">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 hover:bg-wa-cream/60 transition-colors"
+        <div class="wa-card">
+            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
                     data-acc="indextext">
                 <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-wa-gray">首頁文字</span>
-                    <span class="text-xs text-wa-blue font-light">主標題、副標題與字體</span>
+                    <span class="text-base font-light text-wa-gray" data-i18n="idxtext.title">首頁文字</span>
+                    <span class="text-xs text-wa-blue font-light" data-i18n="idxtext.desc">主標題、副標題與字體</span>
                 </div>
                 <svg class="acc-arrow open w-4 h-4 text-wa-blue" data-acc="indextext"
                      fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -184,39 +415,32 @@
                 <div class="px-5 pb-5 space-y-3 border-t border-wa-light">
                     <div class="pt-4 space-y-3">
                         <div>
-                            <label class="block text-xs text-wa-blue font-light mb-1">主標題</label>
-                            <input type="text" id="idxMainTitle" maxlength="30"
-                                   class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue">
+                            <label class="block text-xs text-wa-blue font-light mb-1" data-i18n="idxtext.main">主標題</label>
+                            <input type="text" id="idxMainTitle" maxlength="30" class="wa-input">
                         </div>
                         <div>
-                            <label class="block text-xs text-wa-blue font-light mb-1">副標題</label>
-                            <input type="text" id="idxSubtitle" maxlength="30"
-                                   class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue">
+                            <label class="block text-xs text-wa-blue font-light mb-1" data-i18n="idxtext.sub">副標題</label>
+                            <input type="text" id="idxSubtitle" maxlength="30" class="wa-input">
                         </div>
                         <div>
-                            <label class="block text-xs text-wa-blue font-light mb-1">中段文字</label>
-                            <input type="text" id="idxMiddleText" maxlength="60"
-                                   class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue">
+                            <label class="block text-xs text-wa-blue font-light mb-1" data-i18n="idxtext.middle">中段文字</label>
+                            <input type="text" id="idxMiddleText" maxlength="60" class="wa-input">
                         </div>
                         <div>
-                            <label class="block text-xs text-wa-blue font-light mb-1">字體</label>
-                            <select id="idxFont"
-                                    class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue">
-                                <optgroup label="Google 字型">
+                            <label class="block text-xs text-wa-blue font-light mb-1" data-i18n="idxtext.font">字體</label>
+                            <select id="idxFont" class="wa-select">
+                                <optgroup label="Google Fonts">
                                     <option value="Noto Sans JP">Noto Sans JP — 現代無襯線</option>
                                     <option value="Noto Serif JP">Noto Serif JP — 典雅有襯線</option>
                                     <option value="M PLUS Rounded 1c">M PLUS Rounded 1c — 圓體</option>
                                     <option value="Zen Kaku Gothic New">Zen Kaku Gothic New — 方形現代</option>
                                     <option value="Shippori Mincho">Shippori Mincho — 傳統明朝</option>
                                 </optgroup>
-                                <optgroup label="自訂字型" id="customFontOptgroup"></optgroup>
+                                <optgroup id="customFontOptgroup" data-i18n-optgroup="idxtext.customFontGroup">自訂字型</optgroup>
                             </select>
                         </div>
                         <div class="flex items-center gap-2">
-                            <button onclick="saveIndexText()"
-                                    class="px-4 py-1.5 bg-wa-blue text-white text-xs font-light rounded hover:bg-wa-blue/90 transition-all active:scale-95">
-                                儲存並套用
-                            </button>
+                            <button onclick="saveIndexText()" class="btn-primary" data-i18n="btn.saveApply">儲存並套用</button>
                             <span id="idxTextMsg" class="text-xs font-light text-wa-blue hidden"></span>
                         </div>
                     </div>
@@ -226,18 +450,18 @@
 
     </div><!-- /tab-appearance -->
 
-    <!-- ════════════════════════════════════════════════════════ -->
-    <!-- Tab: 服務                                               -->
-    <!-- ════════════════════════════════════════════════════════ -->
-    <div id="tab-services" class="tab-panel space-y-3">
+    <!-- ════════════════════════════════════════════════════ -->
+    <!-- Tab: 服務                                           -->
+    <!-- ════════════════════════════════════════════════════ -->
+    <div id="tab-services" class="tab-panel anim d4 space-y-3">
 
         <!-- ▸ LINE BOT -->
-        <div class="bg-white rounded-xl border border-wa-light overflow-hidden">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 hover:bg-wa-cream/60 transition-colors"
+        <div class="wa-card">
+            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
                     data-acc="line">
                 <div class="flex items-center gap-3">
                     <span class="text-base font-light text-wa-gray">LINE BOT</span>
-                    <span id="lineBadge" class="text-xs text-wa-blue font-light">訪客掃碼取照功能</span>
+                    <span id="lineBadge" class="text-xs text-wa-blue font-light" data-i18n="line.badge">訪客掃碼取照功能</span>
                 </div>
                 <svg class="acc-arrow w-4 h-4 text-wa-blue" data-acc="line"
                      fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -248,38 +472,29 @@
                 <div class="px-5 pb-5 space-y-4 border-t border-wa-light">
                     <div class="pt-4 space-y-3">
                         <div class="flex items-center gap-2">
-                            <span id="lineDot" class="inline-block w-2 h-2 rounded-full bg-wa-light"></span>
-                            <span id="lineStatus" class="text-sm font-light text-wa-blue">未設定</span>
+                            <span id="lineDot" class="inline-block w-2 h-2 rounded-full" style="background:var(--wa-light);"></span>
+                            <span id="lineStatus" class="text-sm font-light text-wa-blue" data-i18n="status.notset">未設定</span>
                         </div>
                         <div id="lineWebhookRow" class="hidden">
-                            <p class="text-xs text-wa-blue font-light mb-1">Webhook URL（貼入 LINE Developers Console）</p>
+                            <p class="text-xs text-wa-blue font-light mb-1" data-i18n="line.webhookLabel">Webhook URL（貼入 LINE Developers Console）</p>
                             <div class="flex items-center gap-2">
-                                <input id="lineWebhookUrl" readonly
-                                       class="flex-1 border border-wa-light rounded px-2 py-1 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none">
-                                <button onclick="copyWebhookUrl()"
-                                        class="px-2 py-1 text-xs font-light rounded border border-wa-light text-wa-gray hover:bg-wa-light transition-all whitespace-nowrap">
-                                    複製
-                                </button>
+                                <input id="lineWebhookUrl" readonly class="wa-input flex-1">
+                                <button onclick="copyWebhookUrl()" class="btn-outline whitespace-nowrap" data-i18n="btn.copy">複製</button>
                             </div>
                         </div>
                         <div>
                             <label class="block text-xs text-wa-blue font-light mb-1">Channel Secret</label>
-                            <input id="lineChannelSecret" type="password" placeholder="從 LINE Developers Console 取得"
-                                   class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue placeholder:text-wa-blue/40">
+                            <input id="lineChannelSecret" type="password" class="wa-input" data-i18n-placeholder="line.secretPlaceholder">
                         </div>
                         <div>
                             <label class="block text-xs text-wa-blue font-light mb-1">Channel Access Token</label>
-                            <input id="lineAccessToken" type="password" placeholder="從 LINE Developers Console 取得（長期金鑰）"
-                                   class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue placeholder:text-wa-blue/40">
+                            <input id="lineAccessToken" type="password" class="wa-input" data-i18n-placeholder="line.tokenPlaceholder">
                         </div>
                         <div class="flex items-center gap-2">
-                            <button onclick="saveLineConfig()"
-                                    class="px-4 py-1.5 bg-wa-blue text-white text-xs font-light rounded hover:bg-wa-blue/90 transition-all active:scale-95">
-                                儲存並套用
-                            </button>
+                            <button onclick="saveLineConfig()" class="btn-primary" data-i18n="btn.saveApply">儲存並套用</button>
                             <span id="lineConfigMsg" class="text-xs font-light text-wa-blue hidden"></span>
                         </div>
-                        <p class="text-xs text-wa-blue/60 font-light">
+                        <p class="text-xs text-wa-blue/70 font-light" data-i18n="line.hint">
                             訪客傳送 6 碼取件碼給 LINE BOT，即可收到照片。<br>
                             需搭配 ngrok 或公開網址，LINE 才能連入 Webhook。
                         </p>
@@ -289,12 +504,12 @@
         </div>
 
         <!-- ▸ 外網穿透 -->
-        <div class="bg-white rounded-xl border border-wa-light overflow-hidden">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 hover:bg-wa-cream/60 transition-colors"
+        <div class="wa-card">
+            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
                     data-acc="ngrok">
                 <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-wa-gray">外網穿透</span>
-                    <span id="ngrokBadge" class="text-xs text-wa-blue font-light">ngrok 公開網址</span>
+                    <span class="text-base font-light text-wa-gray" data-i18n="ngrok.title">外網穿透</span>
+                    <span id="ngrokBadge" class="text-xs text-wa-blue font-light" data-i18n="ngrok.badge">ngrok 公開網址</span>
                 </div>
                 <svg class="acc-arrow w-4 h-4 text-wa-blue" data-acc="ngrok"
                      fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -306,39 +521,27 @@
                     <div class="pt-4 space-y-3">
                         <div class="flex items-center justify-between flex-wrap gap-3">
                             <div class="flex items-center gap-2">
-                                <span id="ngrokDot" class="inline-block w-2 h-2 rounded-full bg-wa-light"></span>
-                                <span id="ngrokStatus" class="text-sm font-light text-wa-blue">未啟動</span>
+                                <span id="ngrokDot" class="inline-block w-2 h-2 rounded-full" style="background:var(--wa-light);"></span>
+                                <span id="ngrokStatus" class="text-sm font-light text-wa-blue" data-i18n="status.stopped">未啟動</span>
                             </div>
                             <div class="flex items-center gap-2">
-                                <button id="ngrokStartBtn" onclick="startNgrok()"
-                                        class="px-4 py-1.5 text-xs font-light rounded bg-wa-blue text-white hover:bg-wa-blue/90 transition-all active:scale-95">
-                                    啟動 ngrok
-                                </button>
-                                <button id="ngrokStopBtn" onclick="stopNgrok()"
-                                        class="hidden px-4 py-1.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-red-300 hover:text-red-400 transition-all">
-                                    停止
-                                </button>
+                                <button id="ngrokStartBtn" onclick="startNgrok()" class="btn-primary" data-i18n="ngrok.start">啟動 ngrok</button>
+                                <button id="ngrokStopBtn" onclick="stopNgrok()" class="hidden btn-danger" data-i18n="ngrok.stop">停止</button>
                             </div>
                         </div>
                         <div id="ngrokTokenRow" class="flex items-center gap-2">
                             <span class="text-xs text-wa-blue font-light whitespace-nowrap">Auth Token</span>
-                            <input id="ngrokTokenInput" type="password" placeholder="留空則使用環境變數"
-                                   class="flex-1 border border-wa-light rounded px-2 py-1 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue placeholder:text-wa-blue/40">
+                            <input id="ngrokTokenInput" type="password" class="wa-input flex-1" data-i18n-placeholder="ngrok.tokenPlaceholder">
                             <button onclick="toggleTokenVisibility()" id="ngrokTokenToggle"
-                                    class="px-2 py-1 text-xs font-light rounded border border-wa-light text-wa-gray hover:bg-wa-light transition-all">
-                                顯示
-                            </button>
+                                    class="btn-outline whitespace-nowrap" data-i18n="btn.show">顯示</button>
                         </div>
                         <div id="ngrokUrlRow" class="hidden flex items-center gap-2">
-                            <span class="text-xs text-wa-blue font-light whitespace-nowrap">公開網址</span>
+                            <span class="text-xs text-wa-blue font-light whitespace-nowrap" data-i18n="ngrok.publicUrl">公開網址</span>
                             <a id="ngrokUrlLink" href="#" target="_blank"
                                class="text-xs font-light text-wa-gray underline underline-offset-2 truncate max-w-xs"></a>
-                            <button onclick="copyNgrokUrl()"
-                                    class="ml-1 px-2 py-0.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:bg-wa-light transition-all">
-                                複製
-                            </button>
+                            <button onclick="copyNgrokUrl()" class="ml-1 btn-outline" data-i18n="btn.copy">複製</button>
                         </div>
-                        <p class="text-xs text-wa-blue/70 font-light">
+                        <p class="text-xs text-wa-blue/70 font-light" data-i18n="ngrok.hint">
                             啟動後 LINE BOT Webhook URL 將自動改用 ngrok 公開網址。
                         </p>
                     </div>
@@ -348,18 +551,47 @@
 
     </div><!-- /tab-services -->
 
-    <!-- ════════════════════════════════════════════════════════ -->
-    <!-- Tab: 系統                                               -->
-    <!-- ════════════════════════════════════════════════════════ -->
-    <div id="tab-system" class="tab-panel space-y-3">
+    <!-- ════════════════════════════════════════════════════ -->
+    <!-- Tab: 照片                                           -->
+    <!-- ════════════════════════════════════════════════════ -->
+    <div id="tab-photos" class="tab-panel anim d4">
+
+        <div class="wa-card">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-wa-light">
+                <div class="flex items-center gap-3">
+                    <span class="text-base font-light text-wa-gray" data-i18n="photos.title">照片</span>
+                    <span id="incomingCount" class="text-xs text-wa-blue font-light"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="openFolderBtn" onclick="openIncomingFolder()" class="btn-outline" style="font-size:0.7rem; padding:5px 12px;" data-i18n="photos.openFolder">
+                        開啟資料夾
+                    </button>
+                    <button onclick="clearIncoming()" class="btn-danger" style="font-size:0.7rem; padding:5px 12px;" data-i18n="photos.clearAll">
+                        清除全部
+                    </button>
+                </div>
+            </div>
+            <div class="p-5">
+                <div id="incomingGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <div class="col-span-full text-center py-12 text-wa-blue font-light text-sm" data-i18n="photos.empty">尚無待選照片</div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /tab-photos -->
+
+    <!-- ════════════════════════════════════════════════════ -->
+    <!-- Tab: 系統                                           -->
+    <!-- ════════════════════════════════════════════════════ -->
+    <div id="tab-system" class="tab-panel anim d4 space-y-3">
 
         <!-- ▸ 帳號管理 -->
-        <div class="bg-white rounded-xl border border-wa-light overflow-hidden">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 hover:bg-wa-cream/60 transition-colors"
+        <div class="wa-card">
+            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
                     data-acc="accounts">
                 <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-wa-gray">帳號管理</span>
-                    <span class="text-xs text-wa-blue font-light">管理員帳號設定</span>
+                    <span class="text-base font-light text-wa-gray" data-i18n="accounts.title">帳號管理</span>
+                    <span class="text-xs text-wa-blue font-light" data-i18n="accounts.desc">管理員帳號設定</span>
                 </div>
                 <svg class="acc-arrow w-4 h-4 text-wa-blue" data-acc="accounts"
                      fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -371,23 +603,18 @@
                     <div class="pt-4 space-y-3">
                         <div id="accountsList" class="space-y-2"></div>
                         <div class="space-y-3 pt-2">
-                            <p class="text-xs text-wa-blue font-light">新增管理員帳號</p>
+                            <p class="text-xs text-wa-blue font-light" data-i18n="accounts.addTitle">新增管理員帳號</p>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label class="block text-xs text-wa-blue font-light mb-1">帳號</label>
-                                    <input type="text" id="newUsername"
-                                           class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue">
+                                    <label class="block text-xs text-wa-blue font-light mb-1" data-i18n="accounts.username">帳號</label>
+                                    <input type="text" id="newUsername" class="wa-input">
                                 </div>
                                 <div>
-                                    <label class="block text-xs text-wa-blue font-light mb-1">密碼</label>
-                                    <input type="password" id="newPassword"
-                                           class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue">
+                                    <label class="block text-xs text-wa-blue font-light mb-1" data-i18n="accounts.password">密碼</label>
+                                    <input type="password" id="newPassword" class="wa-input">
                                 </div>
                             </div>
-                            <button onclick="addAccount()"
-                                    class="px-4 py-1.5 bg-wa-blue text-white text-xs font-light rounded hover:bg-wa-blue/90 transition-all active:scale-95">
-                                新增帳號
-                            </button>
+                            <button onclick="addAccount()" class="btn-primary" data-i18n="accounts.add">新增帳號</button>
                         </div>
                     </div>
                 </div>
@@ -395,12 +622,12 @@
         </div>
 
         <!-- ▸ 系統重置 -->
-        <div class="bg-white rounded-xl border border-red-100 overflow-hidden mt-6">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 hover:bg-red-50/40 transition-colors"
-                    data-acc="reset">
+        <div class="mt-6" style="background:var(--bg-card); border:1px solid rgba(248,113,113,0.2); border-radius:0.75rem; overflow:hidden; box-shadow:var(--shadow-sm);">
+            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
+                    data-acc="reset" style="--hover-bg: rgba(248,113,113,0.04);">
                 <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-red-400">系統重置</span>
-                    <span class="text-xs text-red-300 font-light">恢復出廠狀態</span>
+                    <span class="text-base font-light text-red-400" data-i18n="reset.title">系統重置</span>
+                    <span class="text-xs text-red-300 font-light" data-i18n="reset.desc">恢復出廠狀態</span>
                 </div>
                 <svg class="acc-arrow w-4 h-4 text-red-300" data-acc="reset"
                      fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -408,21 +635,23 @@
                 </svg>
             </button>
             <div class="acc-body" id="acc-reset">
-                <div class="px-5 pb-5 space-y-4 border-t border-red-100">
+                <div class="px-5 pb-5 space-y-4" style="border-top:1px solid rgba(248,113,113,0.15);">
                     <div class="pt-4 space-y-3">
-                        <div class="rounded-lg bg-red-50 border border-red-100 px-4 py-3 space-y-1">
-                            <p class="text-xs font-medium text-red-500">重置將清除以下所有資料：</p>
+                        <div class="rounded-lg px-4 py-3 space-y-1" style="background:rgba(248,113,113,0.06); border:1px solid rgba(248,113,113,0.15);">
+                            <p class="text-xs font-medium text-red-500" data-i18n="reset.warning">重置將清除以下所有資料：</p>
                             <ul class="text-xs text-red-400 font-light space-y-0.5 list-disc list-inside">
-                                <li>LINE BOT 設定（Channel Secret / Access Token）</li>
-                                <li>所有拍攝照片與取件碼</li>
-                                <li>首頁底圖</li>
-                                <li>首頁文字設定</li>
+                                <li data-i18n="reset.item1">LINE BOT 設定（Channel Secret / Access Token）</li>
+                                <li data-i18n="reset.item2">所有拍攝照片與取件碼</li>
+                                <li data-i18n="reset.item3">首頁底圖</li>
+                                <li data-i18n="reset.item4">首頁文字設定</li>
                             </ul>
-                            <p class="text-xs text-red-400 font-light pt-1">帳號資料不受影響。此操作無法復原。</p>
+                            <p class="text-xs text-red-400 font-light pt-1" data-i18n="reset.note">帳號資料不受影響。此操作無法復原。</p>
                         </div>
-                        <div id="resetResult" class="hidden rounded-lg bg-wa-cream border border-wa-light px-4 py-3 text-xs font-light text-wa-gray space-y-1"></div>
+                        <div id="resetResult" class="hidden rounded-lg px-4 py-3 text-xs font-light space-y-1"
+                             style="background:var(--wa-cream); border:1px solid var(--border); color:var(--text-main);"></div>
                         <button onclick="resetSystem()"
-                                class="px-4 py-1.5 bg-red-400 text-white text-xs font-light rounded hover:bg-red-500 transition-all active:scale-95">
+                                class="px-4 py-1.5 bg-red-400 text-white text-xs font-light rounded hover:bg-red-500 transition-all active:scale-95"
+                                data-i18n="reset.btn">
                             執行重置
                         </button>
                     </div>
@@ -432,69 +661,40 @@
 
     </div><!-- /tab-system -->
 
-    <!-- ════════════════════════════════════════════════════════ -->
-    <!-- Tab: 照片                                               -->
-    <!-- ════════════════════════════════════════════════════════ -->
-    <div id="tab-photos" class="tab-panel">
-
-        <div class="bg-white rounded-xl border border-wa-light overflow-hidden">
-            <div class="flex items-center justify-between px-5 py-4 border-b border-wa-light">
-                <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-wa-gray">照片</span>
-                    <span id="incomingCount" class="text-xs text-wa-blue font-light"></span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button id="openFolderBtn" onclick="openIncomingFolder()"
-                            class="px-3 py-1.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-wa-blue hover:text-wa-blue transition-all">
-                        開啟資料夾
-                    </button>
-                    <button onclick="clearIncoming()"
-                            class="px-3 py-1.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-red-300 hover:text-red-400 transition-all">
-                        清除全部
-                    </button>
-                </div>
-            </div>
-            <div class="p-5">
-                <div id="incomingGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                    <div class="col-span-full text-center py-12 text-wa-blue font-light text-sm">尚無待選照片</div>
-                </div>
-            </div>
-        </div>
-
-    </div><!-- /tab-photos -->
-
-
 </div><!-- /max-w-4xl -->
 
-<!-- ── 改密碼 Modal ─────────────────────────────────────── -->
-<div id="pwModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/30 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl border border-wa-light shadow-lg w-80 mx-4 p-6 space-y-4">
-        <h3 class="text-base font-light text-wa-gray">變更密碼</h3>
+<!-- Bottom label -->
+<div class="fixed bottom-5 left-0 right-0 text-center pointer-events-none" style="z-index:10;">
+    <span style="font-size:0.52rem; letter-spacing:0.28em; color:rgba(184,197,214,0.45); font-weight:300;">
+        風嶺拍貼機 · PHOTOBOOTH SYSTEM
+    </span>
+</div>
+
+<!-- ── 改密碼 Modal ────────────────────────── -->
+<div id="pwModal" class="fixed inset-0 z-50 hidden items-center justify-center" style="background:rgba(0,0,0,0.25); backdrop-filter:blur(4px);">
+    <div class="rounded-2xl border shadow-lg w-80 mx-4 p-6 space-y-4"
+         style="background:var(--bg-card); border-color:var(--border);">
+        <div class="flex items-center gap-3 mb-1">
+            <div style="flex:1; height:1px; background:rgba(184,197,214,0.4);"></div>
+            <div style="width:4px; height:4px; border:1px solid rgba(184,197,214,0.6); transform:rotate(45deg);"></div>
+            <div style="flex:1; height:1px; background:rgba(184,197,214,0.4);"></div>
+        </div>
+        <h3 class="text-base font-light text-wa-gray" style="letter-spacing:0.08em;" data-i18n="pw.title">變更密碼</h3>
         <p id="pwModalUser" class="text-xs text-wa-blue font-light"></p>
         <div class="space-y-3">
             <div>
-                <label class="block text-xs text-wa-blue font-light mb-1">新密碼</label>
-                <input type="password" id="pwInput"
-                       class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue"
-                       placeholder="至少 8 個字元">
+                <label class="block text-xs text-wa-blue font-light mb-1" data-i18n="pw.new">新密碼</label>
+                <input type="password" id="pwInput" class="wa-input" data-i18n-placeholder="pw.newPlaceholder">
             </div>
             <div>
-                <label class="block text-xs text-wa-blue font-light mb-1">確認新密碼</label>
-                <input type="password" id="pwConfirmInput"
-                       class="w-full border border-wa-light rounded px-2 py-1.5 text-xs font-light bg-wa-cream text-wa-gray focus:outline-none focus:border-wa-blue"
-                       placeholder="再次輸入新密碼">
+                <label class="block text-xs text-wa-blue font-light mb-1" data-i18n="pw.confirm">確認新密碼</label>
+                <input type="password" id="pwConfirmInput" class="wa-input" data-i18n-placeholder="pw.confirmPlaceholder">
             </div>
             <p id="pwModalErr" class="hidden text-xs text-red-400 font-light"></p>
         </div>
         <div class="flex justify-end gap-2 pt-1">
-            <button onclick="closePwModal()"
-                    class="px-4 py-1.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:bg-wa-light transition-all">
-                取消
-            </button>
-            <button onclick="submitChangePassword()"
-                    class="px-4 py-1.5 text-xs font-light rounded bg-wa-blue text-white hover:bg-wa-blue/90 transition-all active:scale-95">
-                確認變更
-            </button>
+            <button onclick="closePwModal()" class="btn-outline" style="padding:5px 14px;" data-i18n="btn.cancel">取消</button>
+            <button onclick="submitChangePassword()" class="btn-primary" style="padding:5px 14px;" data-i18n="pw.submit">確認變更</button>
         </div>
     </div>
 </div>
@@ -502,7 +702,307 @@
 <script>
     const API_URL = '';
 
-    // ── Tab Navigation ──────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // i18n — Translations
+    // ═══════════════════════════════════════════════
+    const TRANSLATIONS = {
+        'zh-TW': {
+            'vert.admin':          '管理後台 · ADMIN',
+            'nav.home':            '← 首頁',
+            'nav.logout':          '登出',
+            'toolbar.light':       '淺色',
+            'toolbar.dark':        '深色',
+            'brand.title':         '拍貼機',
+            'brand.sub':           'ADMIN · MANAGEMENT',
+            'tab.appearance':      '外觀',
+            'tab.services':        '服務',
+            'tab.photos':          '照片',
+            'tab.system':          '系統',
+            'bg.title':            '首頁底圖',
+            'bg.desc':             '首頁背景圖片管理',
+            'bg.current':          '目前底圖',
+            'bg.empty':            '尚未上傳底圖，首頁將顯示預設漸層背景。',
+            'bg.upload':           '上傳底圖',
+            'bg.delete':           '移除底圖',
+            'bg.hint':             '支援 JPG / PNG / WebP，建議尺寸 1920×1080 或以上。',
+            'fonts.title':         '自訂字型',
+            'fonts.desc':          '上傳本地字型檔案',
+            'fonts.upload':        '上傳字型',
+            'fonts.hint':          '支援 TTF / OTF / WOFF / WOFF2，上傳後可在「首頁文字」字體選單中選用。',
+            'fonts.empty':         '尚未上傳字型',
+            'idxtext.title':       '首頁文字',
+            'idxtext.desc':        '主標題、副標題與字體',
+            'idxtext.main':        '主標題',
+            'idxtext.sub':         '副標題',
+            'idxtext.middle':      '中段文字',
+            'idxtext.font':        '字體',
+            'idxtext.customFontGroup': '自訂字型',
+            'line.badge':          '訪客掃碼取照功能',
+            'line.webhookLabel':   'Webhook URL（貼入 LINE Developers Console）',
+            'line.secretPlaceholder':  '從 LINE Developers Console 取得',
+            'line.tokenPlaceholder':   '從 LINE Developers Console 取得（長期金鑰）',
+            'line.hint':           '訪客傳送 6 碼取件碼給 LINE BOT，即可收到照片。\n需搭配 ngrok 或公開網址，LINE 才能連入 Webhook。',
+            'ngrok.title':         '外網穿透',
+            'ngrok.badge':         'ngrok 公開網址',
+            'ngrok.start':         '啟動 ngrok',
+            'ngrok.stop':          '停止',
+            'ngrok.tokenPlaceholder': '留空則使用環境變數',
+            'ngrok.publicUrl':     '公開網址',
+            'ngrok.hint':          '啟動後 LINE BOT Webhook URL 將自動改用 ngrok 公開網址。',
+            'photos.title':        '照片',
+            'photos.openFolder':   '開啟資料夾',
+            'photos.clearAll':     '清除全部',
+            'photos.empty':        '尚無待選照片',
+            'photos.noPhotos':     '尚無照片',
+            'photos.loadFail':     '載入失敗',
+            'photos.code':         '取件碼',
+            'photos.delete':       '刪除',
+            'accounts.title':      '帳號管理',
+            'accounts.desc':       '管理員帳號設定',
+            'accounts.addTitle':   '新增管理員帳號',
+            'accounts.username':   '帳號',
+            'accounts.password':   '密碼',
+            'accounts.add':        '新增帳號',
+            'accounts.changepw':   '改密碼',
+            'accounts.delete':     '刪除',
+            'reset.title':         '系統重置',
+            'reset.desc':          '恢復出廠狀態',
+            'reset.warning':       '重置將清除以下所有資料：',
+            'reset.item1':         'LINE BOT 設定（Channel Secret / Access Token）',
+            'reset.item2':         '所有拍攝照片與取件碼',
+            'reset.item3':         '首頁底圖',
+            'reset.item4':         '首頁文字設定',
+            'reset.note':          '帳號資料不受影響。此操作無法復原。',
+            'reset.btn':           '執行重置',
+            'pw.title':            '變更密碼',
+            'pw.new':              '新密碼',
+            'pw.newPlaceholder':   '至少 8 個字元',
+            'pw.confirm':          '確認新密碼',
+            'pw.confirmPlaceholder': '再次輸入新密碼',
+            'pw.submit':           '確認變更',
+            'pw.userLabel':        '帳號：',
+            'btn.saveApply':       '儲存並套用',
+            'btn.copy':            '複製',
+            'btn.show':            '顯示',
+            'btn.hide':            '隱藏',
+            'btn.cancel':          '取消',
+            'status.notset':       '未設定',
+            'status.configured':   '已設定',
+            'status.enabled':      '已啟用',
+            'status.stopped':      '未啟動',
+            'status.running':      '已啟動',
+            'status.connected':    '已連線',
+            'loading':             '載入中…',
+            'msg.saved':           '✓ 已儲存',
+            'msg.uploaded':        '✓ 上傳成功',
+            'confirm.clearAll':    '確定要清除全部待選照片？',
+            'confirm.deleteFont':  '確定要刪除字型「{0}」？',
+            'confirm.deleteAccount': '確定要刪除帳號「{0}」？',
+            'confirm.deleteBg':    '確定要移除底圖嗎？',
+            'confirm.reset':       '確定要重置系統？這將清除 LINE BOT 設定、所有照片與取件碼、底圖、首頁文字設定。此操作無法復原。',
+            'err.fillFields':      '請填寫帳號與密碼',
+            'err.fillLine':        '請填寫 Channel Secret 與 Access Token',
+            'err.pwEmpty':         '請輸入新密碼',
+            'err.pwShort':         '密碼至少需要 8 個字元',
+            'err.pwMismatch':      '兩次輸入的密碼不一致',
+            'err.delFail':         '刪除失敗: ',
+            'err.clearFail':       '清除失敗: ',
+            'err.openFolderFail':  '無法開啟資料夾: ',
+            'err.saveFail':        '儲存失敗: ',
+            'err.uploadFail':      '上傳失敗: ',
+            'err.resetFail':       '重置失敗: ',
+            'err.ngrokStartFail':  'ngrok 啟動失敗: ',
+            'err.ngrokStopFail':   '停止失敗: ',
+            'err.pwFail':          '更新失敗：',
+            'err.bgDeleteFail':    '移除失敗: ',
+        },
+        'en': {
+            'vert.admin':          'ADMIN · CONSOLE',
+            'nav.home':            '← Home',
+            'nav.logout':          'Logout',
+            'toolbar.light':       'Light',
+            'toolbar.dark':        'Dark',
+            'brand.title':         'PhotoBooth',
+            'brand.sub':           'ADMIN · MANAGEMENT',
+            'tab.appearance':      'Appearance',
+            'tab.services':        'Services',
+            'tab.photos':          'Photos',
+            'tab.system':          'System',
+            'bg.title':            'Homepage BG',
+            'bg.desc':             'Background image management',
+            'bg.current':          'Current background',
+            'bg.empty':            'No background uploaded. Default gradient will be shown.',
+            'bg.upload':           'Upload BG',
+            'bg.delete':           'Remove BG',
+            'bg.hint':             'Supports JPG / PNG / WebP. Recommended size: 1920×1080 or larger.',
+            'fonts.title':         'Custom Fonts',
+            'fonts.desc':          'Upload local font files',
+            'fonts.upload':        'Upload Font',
+            'fonts.hint':          'Supports TTF / OTF / WOFF / WOFF2. Uploaded fonts appear in the font selector.',
+            'fonts.empty':         'No fonts uploaded',
+            'idxtext.title':       'Homepage Text',
+            'idxtext.desc':        'Title, subtitle & font',
+            'idxtext.main':        'Main Title',
+            'idxtext.sub':         'Subtitle',
+            'idxtext.middle':      'Middle Text',
+            'idxtext.font':        'Font',
+            'idxtext.customFontGroup': 'Custom Fonts',
+            'line.badge':          'Visitor photo pickup via LINE',
+            'line.webhookLabel':   'Webhook URL (paste into LINE Developers Console)',
+            'line.secretPlaceholder':  'From LINE Developers Console',
+            'line.tokenPlaceholder':   'From LINE Developers Console (long-lived token)',
+            'line.hint':           'Visitors send the 6-digit pickup code to LINE BOT to receive their photo.\nRequires ngrok or a public URL for LINE to reach the webhook.',
+            'ngrok.title':         'Tunnel',
+            'ngrok.badge':         'ngrok public URL',
+            'ngrok.start':         'Start ngrok',
+            'ngrok.stop':          'Stop',
+            'ngrok.tokenPlaceholder': 'Leave blank to use env var',
+            'ngrok.publicUrl':     'Public URL',
+            'ngrok.hint':          'The LINE BOT webhook URL automatically switches to the ngrok public URL when active.',
+            'photos.title':        'Photos',
+            'photos.openFolder':   'Open Folder',
+            'photos.clearAll':     'Clear All',
+            'photos.empty':        'No photos yet',
+            'photos.noPhotos':     'No photos',
+            'photos.loadFail':     'Load failed',
+            'photos.code':         'Code',
+            'photos.delete':       'Delete',
+            'accounts.title':      'Accounts',
+            'accounts.desc':       'Admin account settings',
+            'accounts.addTitle':   'Add admin account',
+            'accounts.username':   'Username',
+            'accounts.password':   'Password',
+            'accounts.add':        'Add Account',
+            'accounts.changepw':   'Change PW',
+            'accounts.delete':     'Delete',
+            'reset.title':         'System Reset',
+            'reset.desc':          'Restore factory defaults',
+            'reset.warning':       'Reset will clear all of the following:',
+            'reset.item1':         'LINE BOT credentials (Channel Secret / Access Token)',
+            'reset.item2':         'All photos and pickup codes',
+            'reset.item3':         'Homepage background image',
+            'reset.item4':         'Homepage text settings',
+            'reset.note':          'Account data is not affected. This action cannot be undone.',
+            'reset.btn':           'Execute Reset',
+            'pw.title':            'Change Password',
+            'pw.new':              'New Password',
+            'pw.newPlaceholder':   'At least 8 characters',
+            'pw.confirm':          'Confirm Password',
+            'pw.confirmPlaceholder': 'Re-enter new password',
+            'pw.submit':           'Confirm',
+            'pw.userLabel':        'Account: ',
+            'btn.saveApply':       'Save & Apply',
+            'btn.copy':            'Copy',
+            'btn.show':            'Show',
+            'btn.hide':            'Hide',
+            'btn.cancel':          'Cancel',
+            'status.notset':       'Not configured',
+            'status.configured':   'Configured',
+            'status.enabled':      'Enabled',
+            'status.stopped':      'Stopped',
+            'status.running':      'Running',
+            'status.connected':    'Connected',
+            'loading':             'Loading…',
+            'msg.saved':           '✓ Saved',
+            'msg.uploaded':        '✓ Uploaded',
+            'confirm.clearAll':    'Clear all photos?',
+            'confirm.deleteFont':  'Delete font "{0}"?',
+            'confirm.deleteAccount': 'Delete account "{0}"?',
+            'confirm.deleteBg':    'Remove the background image?',
+            'confirm.reset':       'Reset system? This will clear LINE BOT settings, all photos, pickup codes, background, and homepage text. This cannot be undone.',
+            'err.fillFields':      'Please enter username and password',
+            'err.fillLine':        'Please enter Channel Secret and Access Token',
+            'err.pwEmpty':         'Please enter a new password',
+            'err.pwShort':         'Password must be at least 8 characters',
+            'err.pwMismatch':      'Passwords do not match',
+            'err.delFail':         'Delete failed: ',
+            'err.clearFail':       'Clear failed: ',
+            'err.openFolderFail':  'Cannot open folder: ',
+            'err.saveFail':        'Save failed: ',
+            'err.uploadFail':      'Upload failed: ',
+            'err.resetFail':       'Reset failed: ',
+            'err.ngrokStartFail':  'ngrok start failed: ',
+            'err.ngrokStopFail':   'Stop failed: ',
+            'err.pwFail':          'Update failed: ',
+            'err.bgDeleteFail':    'Remove failed: ',
+        }
+    };
+
+    let _lang = localStorage.getItem('pb-lang') || 'zh-TW';
+
+    function t(key, ...args) {
+        let s = (TRANSLATIONS[_lang] || TRANSLATIONS['zh-TW'])[key] || key;
+        args.forEach((a, i) => { s = s.replace('{' + i + '}', a); });
+        return s;
+    }
+
+    function applyLang(lang) {
+        _lang = lang;
+        localStorage.setItem('pb-lang', lang);
+        document.documentElement.lang = lang;
+
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.dataset.i18n;
+            const val = t(key);
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                el.placeholder = val;
+            } else if (el.tagName === 'LABEL' && el.querySelector('input')) {
+                // Label with hidden file input — only update non-whitespace text nodes
+                el.childNodes.forEach(n => {
+                    if (n.nodeType === 3 && n.textContent.trim()) n.textContent = val;
+                });
+            } else if (val.includes('\n')) {
+                // Preserve line breaks (e.g. multi-line hint text)
+                el.innerHTML = val.replace(/\n/g, '<br>');
+            } else {
+                el.textContent = val;
+            }
+        });
+
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+            el.placeholder = t(el.dataset.i18nPlaceholder);
+        });
+
+        document.querySelectorAll('[data-i18n-optgroup]').forEach(el => {
+            el.label = t(el.dataset.i18nOptgroup);
+        });
+
+        document.getElementById('langLabel').textContent = lang === 'zh-TW' ? 'EN' : '中';
+        // Re-sync theme label text with current language
+        document.getElementById('themeLabel').textContent = _theme === 'dark' ? t('toolbar.dark') : t('toolbar.light');
+    }
+
+    function toggleLang() {
+        applyLang(_lang === 'zh-TW' ? 'en' : 'zh-TW');
+    }
+
+    // ═══════════════════════════════════════════════
+    // Theme
+    // ═══════════════════════════════════════════════
+    let _theme = localStorage.getItem('pb-theme') || 'light';
+
+    function applyTheme(theme) {
+        _theme = theme;
+        localStorage.setItem('pb-theme', theme);
+        document.documentElement.setAttribute('data-theme', theme);
+        const icon  = document.getElementById('themeIcon');
+        const label = document.getElementById('themeLabel');
+        if (theme === 'dark') {
+            icon.textContent  = '☾';
+            label.textContent = t('toolbar.dark');
+        } else {
+            icon.textContent  = '☀';
+            label.textContent = t('toolbar.light');
+        }
+    }
+
+    function toggleTheme() {
+        applyTheme(_theme === 'light' ? 'dark' : 'light');
+    }
+
+    // ═══════════════════════════════════════════════
+    // Tab Navigation
+    // ═══════════════════════════════════════════════
     const tabBtns   = document.querySelectorAll('.tab-btn');
     const tabPanels = document.querySelectorAll('.tab-panel');
 
@@ -519,10 +1019,12 @@
         if (['appearance', 'services', 'photos', 'system'].includes(hash)) switchTab(hash);
     }
 
-    // ── Accordion ───────────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // Accordion
+    // ═══════════════════════════════════════════════
     document.querySelectorAll('.acc-trigger').forEach(btn => {
         btn.addEventListener('click', () => {
-            const id = btn.dataset.acc;
+            const id    = btn.dataset.acc;
             const body  = document.getElementById(`acc-${id}`);
             const arrow = btn.querySelector('.acc-arrow');
             const isOpen = body.classList.contains('open');
@@ -531,13 +1033,17 @@
         });
     });
 
-    // ── Auth / Logout ──────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // Auth / Logout
+    // ═══════════════════════════════════════════════
     async function logout() {
         await axios.post('/api/auth/logout').catch(() => {});
         window.location.href = '/login';
     }
 
-    // ── Incoming photos ────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // Incoming photos
+    // ═══════════════════════════════════════════════
     function escHtml(s) {
         return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
@@ -546,44 +1052,42 @@
         const grid = document.getElementById('incomingGrid');
         try {
             const res    = await axios.get(`${API_URL}/api/admin/incoming`);
-            const photos = res.data.photos;  // [{filename, code}, ...]
+            const photos = res.data.photos;
             updateIncomingCount(photos.length);
             if (photos.length === 0) {
-                grid.innerHTML = `<div class="col-span-full text-center py-12 text-wa-blue font-light text-sm">尚無照片</div>`;
+                grid.innerHTML = `<div class="col-span-full text-center py-12 text-wa-blue font-light text-sm">${t('photos.noPhotos')}</div>`;
                 return;
             }
             grid.innerHTML = photos.map(p => renderIncomingCard(p.filename, p.code)).join('');
         } catch (_) {
-            grid.innerHTML = `<div class="col-span-full text-center py-12 text-wa-blue font-light text-sm">載入失敗</div>`;
+            grid.innerHTML = `<div class="col-span-full text-center py-12 text-wa-blue font-light text-sm">${t('photos.loadFail')}</div>`;
         }
     }
 
     function updateIncomingCount(n) {
-        document.getElementById('incomingCount').textContent = n > 0 ? `${n} 張` : '';
+        document.getElementById('incomingCount').textContent = n > 0 ? `${n}` : '';
     }
 
     function renderIncomingCard(filename, code) {
         const codeDisplay = code || '—';
         const safe = escHtml(filename);
         return `
-            <div id="inc-${CSS.escape(filename)}" class="bg-white rounded-lg border border-wa-light overflow-hidden">
-                <div class="w-full aspect-square bg-wa-light overflow-hidden">
+            <div id="inc-${CSS.escape(filename)}" class="rounded-lg border overflow-hidden" style="background:var(--bg-card); border-color:var(--border);">
+                <div class="w-full aspect-square overflow-hidden" style="background:var(--wa-light);">
                     <img src="/api/admin/incoming/thumb/${encodeURIComponent(filename)}" class="w-full h-full object-cover" alt="${safe}" loading="lazy">
                 </div>
                 <div class="p-2.5 space-y-2">
-                    <div class="flex items-center justify-between bg-wa-cream rounded px-2.5 py-1.5">
-                        <span class="text-xs text-wa-blue font-light">取件碼</span>
+                    <div class="flex items-center justify-between rounded px-2.5 py-1.5" style="background:var(--wa-cream);">
+                        <span class="text-xs text-wa-blue font-light">${t('photos.code')}</span>
                         <span class="font-mono text-base font-medium tracking-[0.2em] text-wa-gray select-all">${codeDisplay}</span>
                     </div>
-                    <button data-filename="${safe}"
-                            class="del-btn w-full py-1 text-xs font-light rounded text-wa-gray hover:text-red-500 hover:bg-red-50 transition-all">
-                        刪除
+                    <button data-filename="${safe}" class="del-btn">
+                        ${t('photos.delete')}
                     </button>
                 </div>
             </div>`;
     }
 
-    // 事件委派：避免在 innerHTML 中使用 inline onclick（XSS 防護）
     document.getElementById('incomingGrid').addEventListener('click', (e) => {
         const btn = e.target.closest('.del-btn');
         if (btn) deleteIncomingPhoto(btn.dataset.filename);
@@ -606,24 +1110,23 @@
             const remaining = grid.querySelectorAll('[id^="inc-"]').length;
             updateIncomingCount(remaining);
             if (remaining === 0) {
-                grid.innerHTML = `<div class="col-span-full text-center py-12 text-wa-blue font-light text-sm">尚無待選照片</div>`;
+                grid.innerHTML = `<div class="col-span-full text-center py-12 text-wa-blue font-light text-sm">${t('photos.empty')}</div>`;
             }
         } catch (err) {
-            alert('刪除失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.delFail') + (err.response?.data?.detail || ''));
         }
     }
 
     async function clearIncoming() {
-        if (!confirm('確定要清除全部待選照片？')) return;
+        if (!confirm(t('confirm.clearAll'))) return;
         try {
             await axios.delete(`${API_URL}/api/admin/incoming`);
             loadIncoming();
         } catch (err) {
-            alert('清除失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.clearFail') + (err.response?.data?.detail || ''));
         }
     }
 
-    // 僅本機存取時才顯示「開啟資料夾」按鈕
     (function () {
         const isLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
         if (!isLocal) {
@@ -636,11 +1139,13 @@
         try {
             await axios.post(`${API_URL}/api/admin/open-incoming-folder`);
         } catch (err) {
-            alert('無法開啟資料夾: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.openFolderFail') + (err.response?.data?.detail || ''));
         }
     }
 
-    // ── ngrok ──────────────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // ngrok
+    // ═══════════════════════════════════════════════
     function applyNgrokUI(active, url) {
         const dot      = document.getElementById('ngrokDot');
         const label    = document.getElementById('ngrokStatus');
@@ -652,9 +1157,9 @@
         const urlLink  = document.getElementById('ngrokUrlLink');
 
         if (active && url) {
-            dot.className     = 'inline-block w-2 h-2 rounded-full bg-green-400';
-            label.textContent = '已啟動';
-            badge.textContent = '已連線';
+            dot.style.background = '#4ade80';
+            label.textContent    = t('status.running');
+            badge.textContent    = t('status.connected');
             startBtn.classList.add('hidden');
             stopBtn.classList.remove('hidden');
             tokenRow.classList.add('hidden');
@@ -662,9 +1167,9 @@
             urlLink.href        = url;
             urlLink.textContent = url;
         } else {
-            dot.className     = 'inline-block w-2 h-2 rounded-full bg-wa-light';
-            label.textContent = '未啟動';
-            badge.textContent = 'ngrok 公開網址';
+            dot.style.background = 'var(--wa-light)';
+            label.textContent    = t('status.stopped');
+            badge.textContent    = t('ngrok.badge');
             startBtn.classList.remove('hidden');
             stopBtn.classList.add('hidden');
             tokenRow.classList.remove('hidden');
@@ -683,7 +1188,7 @@
         const btn   = document.getElementById('ngrokStartBtn');
         const token = document.getElementById('ngrokTokenInput').value.trim();
         btn.disabled    = true;
-        btn.textContent = '啟動中...';
+        btn.textContent = '…';
         try {
             if (token) {
                 await axios.post(`${API_URL}/api/admin/ngrok/token`, { auth_token: token });
@@ -692,10 +1197,10 @@
             applyNgrokUI(res.data.active, res.data.public_url);
             loadLineConfig();
         } catch (err) {
-            alert('ngrok 啟動失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.ngrokStartFail') + (err.response?.data?.detail || ''));
         } finally {
             btn.disabled    = false;
-            btn.textContent = '啟動 ngrok';
+            btn.textContent = t('ngrok.start');
         }
     }
 
@@ -707,7 +1212,7 @@
             applyNgrokUI(false, null);
             loadLineConfig();
         } catch (err) {
-            alert('停止失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.ngrokStopFail') + (err.response?.data?.detail || ''));
         } finally {
             btn.disabled = false;
         }
@@ -716,8 +1221,8 @@
     function toggleTokenVisibility() {
         const input  = document.getElementById('ngrokTokenInput');
         const toggle = document.getElementById('ngrokTokenToggle');
-        input.type        = input.type === 'password' ? 'text' : 'password';
-        toggle.textContent = input.type === 'password' ? '顯示' : '隱藏';
+        input.type         = input.type === 'password' ? 'text' : 'password';
+        toggle.textContent = input.type === 'password' ? t('btn.show') : t('btn.hide');
     }
 
     function copyNgrokUrl() {
@@ -725,7 +1230,9 @@
         if (url && url !== location.href) navigator.clipboard.writeText(url);
     }
 
-    // ── LINE BOT ───────────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // LINE BOT
+    // ═══════════════════════════════════════════════
     async function loadLineConfig() {
         try {
             const res = await axios.get(`${API_URL}/api/admin/line/config`);
@@ -740,9 +1247,9 @@
         const webhookRow = document.getElementById('lineWebhookRow');
         const urlInput   = document.getElementById('lineWebhookUrl');
 
-        dot.className     = `inline-block w-2 h-2 rounded-full ${configured ? 'bg-green-400' : 'bg-wa-light'}`;
-        label.textContent = configured ? '已設定' : '未設定';
-        badge.textContent = configured ? '已啟用' : '訪客掃碼取照功能';
+        dot.style.background = configured ? '#4ade80' : 'var(--wa-light)';
+        label.textContent    = configured ? t('status.configured') : t('status.notset');
+        badge.textContent    = configured ? t('status.enabled') : t('line.badge');
 
         if (webhookUrl) {
             webhookRow.classList.remove('hidden');
@@ -756,18 +1263,18 @@
         const secret = document.getElementById('lineChannelSecret').value.trim();
         const token  = document.getElementById('lineAccessToken').value.trim();
         const msg    = document.getElementById('lineConfigMsg');
-        if (!secret || !token) { alert('請填寫 Channel Secret 與 Access Token'); return; }
+        if (!secret || !token) { alert(t('err.fillLine')); return; }
         try {
             await axios.post(`${API_URL}/api/admin/line/config`, {
                 channel_secret: secret,
                 channel_access_token: token,
             });
-            msg.textContent = '✓ 已儲存';
+            msg.textContent = t('msg.saved');
             msg.classList.remove('hidden');
             setTimeout(() => msg.classList.add('hidden'), 3000);
             loadLineConfig();
         } catch (err) {
-            alert('儲存失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.saveFail') + (err.response?.data?.detail || ''));
         }
     }
 
@@ -776,7 +1283,9 @@
         if (url) navigator.clipboard.writeText(url);
     }
 
-    // ── Background image ───────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // Background image
+    // ═══════════════════════════════════════════════
     async function loadBgStatus() {
         try {
             const res = await axios.get(`${API_URL}/api/admin/bg-status`);
@@ -812,23 +1321,25 @@
             });
             applyBgUI(true, res.data.url);
         } catch (err) {
-            alert('上傳失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.uploadFail') + (err.response?.data?.detail || ''));
         } finally {
             input.value = '';
         }
     }
 
     async function deleteBg() {
-        if (!confirm('確定要移除底圖嗎？')) return;
+        if (!confirm(t('confirm.deleteBg'))) return;
         try {
             await axios.delete(`${API_URL}/api/admin/bg`);
             applyBgUI(false, null);
         } catch (err) {
-            alert('移除失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.bgDeleteFail') + (err.response?.data?.detail || ''));
         }
     }
 
-    // ── Accounts ───────────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // Accounts
+    // ═══════════════════════════════════════════════
     async function loadAccounts() {
         try {
             const res = await axios.get(`${API_URL}/api/admin/accounts`);
@@ -842,23 +1353,27 @@
         if (!accounts.length) return;
         accounts.forEach(u => {
             const row = document.createElement('div');
-            row.className = 'rounded-lg border border-wa-light px-3 py-2.5 flex items-center justify-between gap-3';
+            row.className = 'rounded-lg px-3 py-2.5 flex items-center justify-between gap-3';
+            row.style.cssText = 'border:1px solid var(--border); background:var(--bg-card);';
 
             const nameSpan = document.createElement('span');
-            nameSpan.className = 'text-sm font-light text-wa-gray';
+            nameSpan.className = 'text-sm font-light';
+            nameSpan.style.color = 'var(--text-main)';
             nameSpan.textContent = u;
 
             const btnGroup = document.createElement('div');
             btnGroup.className = 'flex items-center gap-2';
 
             const pwBtn = document.createElement('button');
-            pwBtn.className = 'px-3 py-1 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-wa-blue hover:text-wa-blue transition-all';
-            pwBtn.textContent = '改密碼';
+            pwBtn.className = 'btn-outline';
+            pwBtn.style.cssText = 'padding:4px 12px; font-size:0.68rem;';
+            pwBtn.textContent = t('accounts.changepw');
             pwBtn.addEventListener('click', () => changePassword(u));
 
             const delBtn = document.createElement('button');
-            delBtn.className = 'px-3 py-1 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-red-300 hover:text-red-400 transition-all';
-            delBtn.textContent = '刪除';
+            delBtn.className = 'btn-danger';
+            delBtn.style.cssText = 'padding:4px 12px; font-size:0.68rem;';
+            delBtn.textContent = t('accounts.delete');
             delBtn.addEventListener('click', () => deleteAccount(u));
 
             btnGroup.appendChild(pwBtn);
@@ -872,24 +1387,24 @@
     async function addAccount() {
         const username = document.getElementById('newUsername').value.trim();
         const password = document.getElementById('newPassword').value;
-        if (!username || !password) { alert('請填寫帳號與密碼'); return; }
+        if (!username || !password) { alert(t('err.fillFields')); return; }
         try {
             await axios.post(`${API_URL}/api/admin/accounts`, { username, password });
             document.getElementById('newUsername').value = '';
             document.getElementById('newPassword').value = '';
             loadAccounts();
         } catch (err) {
-            alert('新增失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.saveFail') + (err.response?.data?.detail || ''));
         }
     }
 
     async function deleteAccount(username) {
-        if (!confirm(`確定要刪除帳號「${username}」？`)) return;
+        if (!confirm(t('confirm.deleteAccount', username))) return;
         try {
             await axios.delete(`${API_URL}/api/admin/accounts/${encodeURIComponent(username)}`);
             loadAccounts();
         } catch (err) {
-            alert('刪除失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.delFail') + (err.response?.data?.detail || ''));
         }
     }
 
@@ -897,7 +1412,7 @@
 
     function changePassword(username) {
         _pwTarget = username;
-        document.getElementById('pwModalUser').textContent = `帳號：${username}`;
+        document.getElementById('pwModalUser').textContent = t('pw.userLabel') + username;
         document.getElementById('pwInput').value = '';
         document.getElementById('pwConfirmInput').value = '';
         document.getElementById('pwModalErr').classList.add('hidden');
@@ -920,45 +1435,48 @@
         const errEl   = document.getElementById('pwModalErr');
         errEl.classList.add('hidden');
 
-        if (!pw) { errEl.textContent = '請輸入新密碼'; errEl.classList.remove('hidden'); return; }
-        if (pw.length < 8) { errEl.textContent = '密碼至少需要 8 個字元'; errEl.classList.remove('hidden'); return; }
-        if (pw !== confirm) { errEl.textContent = '兩次輸入的密碼不一致'; errEl.classList.remove('hidden'); return; }
+        if (!pw) { errEl.textContent = t('err.pwEmpty'); errEl.classList.remove('hidden'); return; }
+        if (pw.length < 8) { errEl.textContent = t('err.pwShort'); errEl.classList.remove('hidden'); return; }
+        if (pw !== confirm) { errEl.textContent = t('err.pwMismatch'); errEl.classList.remove('hidden'); return; }
 
         try {
             await axios.put(`${API_URL}/api/admin/accounts/${encodeURIComponent(_pwTarget)}/password`, { new_password: pw });
             closePwModal();
         } catch (err) {
-            errEl.textContent = '更新失敗：' + (err.response?.data?.detail || '未知錯誤');
+            errEl.textContent = t('err.pwFail') + (err.response?.data?.detail || '');
             errEl.classList.remove('hidden');
         }
     }
 
-    // ── Custom Fonts ───────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // Custom Fonts
+    // ═══════════════════════════════════════════════
     async function loadCustomFonts() {
         try {
             const res   = await axios.get(`${API_URL}/api/fonts`);
             const fonts = res.data.fonts || [];
-            const listEl    = document.getElementById('customFontList');
-            const optgroup  = document.getElementById('customFontOptgroup');
+            const listEl   = document.getElementById('customFontList');
+            const optgroup = document.getElementById('customFontOptgroup');
 
-            // Rebuild font list in accordion
             listEl.innerHTML = '';
             if (fonts.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'text-xs text-wa-blue/60 font-light';
-                empty.textContent = '尚未上傳字型';
+                empty.textContent = t('fonts.empty');
                 listEl.appendChild(empty);
             } else {
                 fonts.forEach(f => {
                     const ext = f.filename.split('.').pop().toUpperCase();
                     const row = document.createElement('div');
-                    row.className = 'flex items-center justify-between rounded-lg border border-wa-light px-3 py-2';
+                    row.className = 'flex items-center justify-between rounded-lg px-3 py-2';
+                    row.style.cssText = 'border:1px solid var(--border);';
                     const info = document.createElement('div');
                     info.className = 'flex items-center gap-2';
-                    info.innerHTML = `<span class="text-sm font-light text-wa-gray">${f.family}</span><span class="text-xs text-wa-blue/50 font-light">.${ext}</span>`;
+                    info.innerHTML = `<span class="text-sm font-light" style="color:var(--text-main);">${f.family}</span><span class="text-xs text-wa-blue/50 font-light">.${ext}</span>`;
                     const btn = document.createElement('button');
-                    btn.className = 'px-2 py-0.5 text-xs font-light rounded border border-wa-light text-wa-gray hover:border-red-300 hover:text-red-400 transition-all';
-                    btn.textContent = '刪除';
+                    btn.className = 'btn-danger';
+                    btn.style.cssText = 'padding:3px 10px; font-size:0.65rem;';
+                    btn.textContent = t('accounts.delete');
                     btn.addEventListener('click', () => deleteCustomFont(f.filename, f.family));
                     row.appendChild(info);
                     row.appendChild(btn);
@@ -966,7 +1484,6 @@
                 });
             }
 
-            // Rebuild optgroup in font selector
             optgroup.innerHTML = fonts.map(f => `<option value="${f.family}">${f.family}</option>`).join('');
         } catch (_) {}
     }
@@ -985,11 +1502,11 @@
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             await loadCustomFonts();
-            msg.textContent = '✓ 上傳成功';
+            msg.textContent = t('msg.uploaded');
             msg.classList.remove('hidden');
             setTimeout(() => msg.classList.add('hidden'), 3000);
         } catch (err) {
-            alert('上傳失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.uploadFail') + (err.response?.data?.detail || ''));
         } finally {
             label.style.pointerEvents = '';
             label.style.opacity = '';
@@ -998,23 +1515,25 @@
     }
 
     async function deleteCustomFont(filename, family) {
-        if (!confirm(`確定要刪除字型「${family}」？`)) return;
+        if (!confirm(t('confirm.deleteFont', family))) return;
         try {
             await axios.delete(`${API_URL}/api/admin/fonts/${encodeURIComponent(filename)}`);
             await loadCustomFonts();
         } catch (err) {
-            alert('刪除失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.delFail') + (err.response?.data?.detail || ''));
         }
     }
 
-    // ── Index Text ─────────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // Index Text
+    // ═══════════════════════════════════════════════
     async function loadIndexText() {
         try {
             const res = await axios.get(`${API_URL}/api/index-text`);
-            document.getElementById('idxMainTitle').value   = res.data.main_title  || '';
-            document.getElementById('idxSubtitle').value    = res.data.subtitle    || '';
-            document.getElementById('idxMiddleText').value  = res.data.middle_text || '';
-            document.getElementById('idxFont').value        = res.data.font        || 'Noto Sans JP';
+            document.getElementById('idxMainTitle').value  = res.data.main_title  || '';
+            document.getElementById('idxSubtitle').value   = res.data.subtitle    || '';
+            document.getElementById('idxMiddleText').value = res.data.middle_text || '';
+            document.getElementById('idxFont').value       = res.data.font        || 'Noto Sans JP';
         } catch (_) {}
     }
 
@@ -1027,21 +1546,23 @@
                 middle_text: document.getElementById('idxMiddleText').value.trim(),
                 font:        document.getElementById('idxFont').value,
             });
-            msg.textContent = '✓ 已儲存';
+            msg.textContent = t('msg.saved');
             msg.classList.remove('hidden');
             setTimeout(() => msg.classList.add('hidden'), 3000);
         } catch (err) {
-            alert('儲存失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.saveFail') + (err.response?.data?.detail || ''));
         }
     }
 
-    // ── System Reset ──────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // System Reset
+    // ═══════════════════════════════════════════════
     async function resetSystem() {
-        if (!confirm('確定要重置系統？這將清除 LINE BOT 設定、所有照片與取件碼、底圖、首頁文字設定。此操作無法復原。')) return;
+        if (!confirm(t('confirm.reset'))) return;
         const btn = document.querySelector('[onclick="resetSystem()"]');
         const resultEl = document.getElementById('resetResult');
         btn.disabled = true;
-        btn.textContent = '重置中...';
+        btn.textContent = '…';
         try {
             const res = await axios.post(`${API_URL}/api/admin/reset`);
             const details = res.data.details;
@@ -1055,14 +1576,16 @@
             await loadCustomFonts();
             loadIndexText();
         } catch (err) {
-            alert('重置失敗: ' + (err.response?.data?.detail || '未知錯誤'));
+            alert(t('err.resetFail') + (err.response?.data?.detail || ''));
         } finally {
             btn.disabled = false;
-            btn.textContent = '執行重置';
+            btn.textContent = t('reset.btn');
         }
     }
 
-    // ── WebSocket ──────────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // WebSocket
+    // ═══════════════════════════════════════════════
     let ws = null;
     function connectWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1086,8 +1609,12 @@
         if (e.key === 'Enter' && _pwTarget) submitChangePassword();
     });
 
-    // ── Init ───────────────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // Init
+    // ═══════════════════════════════════════════════
     window.addEventListener('DOMContentLoaded', async () => {
+        applyTheme(_theme);
+        applyLang(_lang);
         restoreTabFromHash();
         loadIncoming();
         loadNgrokStatus();

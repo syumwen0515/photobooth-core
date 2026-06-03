@@ -5,78 +5,200 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>風嶺拍貼機 — 管理員登入</title>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'wa-cream': '#f5f5f0',
-                        'wa-gray': '#2b2b2b',
-                        'wa-light': '#e8e8e3',
-                        'wa-blue': '#b8c5d6',
-                    }
-                }
-            }
-        }
-    </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400&display=swap');
-        body { font-family: 'Noto Sans JP', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300;400&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            min-height: 100svh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background: #f5f5f0;
+            overflow: hidden;
+        }
+
+        /* Corner bracket decoration */
+        .frame-corner {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+        }
+        .frame-corner::before,
+        .frame-corner::after {
+            content: '';
+            position: absolute;
+            background: rgba(184, 197, 214, 0.45);
+        }
+        .frame-corner::before { width: 100%; height: 1px; top: 0; left: 0; }
+        .frame-corner::after  { width: 1px; height: 100%; top: 0; left: 0; }
+        .frame-corner.tr { transform: rotate(90deg);  top: 0; right: 0; }
+        .frame-corner.bl { transform: rotate(270deg); bottom: 0; left: 0; }
+        .frame-corner.br { transform: rotate(180deg); bottom: 0; right: 0; }
+
+        .vert-label {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            font-size: 0.58rem;
+            font-weight: 300;
+            letter-spacing: 0.3em;
+            color: rgba(184, 197, 214, 0.6);
+        }
+
+        .wa-input {
+            width: 100%;
+            background: #ffffff;
+            border: 1px solid rgba(184, 197, 214, 0.4);
+            border-radius: 3px;
+            padding: 0.625rem 0.75rem;
+            font-size: 0.78rem;
+            font-weight: 300;
+            font-family: 'Noto Sans JP', sans-serif;
+            color: #2b2b2b;
+            transition: border-color 0.2s;
+            outline: none;
+        }
+        .wa-input:focus { border-color: rgba(184, 197, 214, 0.7); }
+        .wa-input::placeholder { color: rgba(184, 197, 214, 0.55); }
+
+        .btn-login {
+            display: block;
+            width: 100%;
+            padding: 11px 0;
+            font-size: 0.72rem;
+            font-weight: 300;
+            letter-spacing: 0.22em;
+            text-indent: 0.22em;
+            border: 1px solid rgba(43, 43, 43, 0.18);
+            color: rgba(43, 43, 43, 0.6);
+            border-radius: 2px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: transparent;
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .btn-login:hover {
+            border-color: rgba(43, 43, 43, 0.4);
+            color: rgba(43, 43, 43, 0.88);
+            background: rgba(43, 43, 43, 0.04);
+        }
+        .btn-login:active { transform: scale(0.98); }
+        .btn-login:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .anim { animation: fadeUp 1s ease forwards; opacity: 0; }
+        .d1 { animation-delay: 0.1s; }
+        .d2 { animation-delay: 0.3s; }
+        .d3 { animation-delay: 0.5s; }
+        .d4 { animation-delay: 0.72s; }
     </style>
 </head>
-<body class="bg-wa-cream text-wa-gray min-h-screen flex items-center justify-center px-4">
+<body>
 
-<a href="/" class="fixed top-4 left-4 text-xs text-wa-blue font-light hover:underline underline-offset-2">← 返回首頁</a>
+<!-- Frame corner decorations -->
+<div style="position:fixed; inset:20px; pointer-events:none; z-index:5;">
+    <div class="frame-corner" style="top:0;left:0;"></div>
+    <div class="frame-corner tr"></div>
+    <div class="frame-corner bl"></div>
+    <div class="frame-corner br"></div>
+</div>
 
-<div class="w-full max-w-sm">
-    <div class="text-center mb-10">
-        <h1 class="text-2xl font-light tracking-wide text-wa-gray mt-4">管理員登入</h1>
-        <div class="mt-3 h-px w-10 bg-wa-blue mx-auto opacity-60"></div>
+<!-- Vertical side labels -->
+<div style="position:fixed; left:20px; top:50%; transform:translateY(-50%); pointer-events:none; z-index:5;">
+    <span class="vert-label">管理員登入 · LOGIN</span>
+</div>
+<div style="position:fixed; right:20px; top:50%; transform:translateY(-50%); pointer-events:none; z-index:5;">
+    <span class="vert-label">風嶺 · CCIT</span>
+</div>
+
+<!-- Login card -->
+<div style="width:100%; max-width:288px;">
+
+    <!-- Top decoration -->
+    <div class="anim d1" style="display:flex; align-items:center; gap:12px; justify-content:center; margin-bottom:32px;">
+        <div style="width:36px; height:1px; background:rgba(184,197,214,0.45);"></div>
+        <div style="width:5px; height:5px; border:1px solid rgba(184,197,214,0.6); transform:rotate(45deg);"></div>
+        <div style="width:36px; height:1px; background:rgba(184,197,214,0.45);"></div>
     </div>
 
-    <form id="loginForm" class="space-y-4" autocomplete="on">
+    <!-- Brand title -->
+    <div class="anim d2" style="text-align:center; margin-bottom:32px;">
+        <div style="font-size:clamp(1.6rem,6vw,2.4rem); font-weight:100; letter-spacing:0.4em;
+                    text-indent:0.4em; color:#2b2b2b; line-height:1;">
+            風嶺
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center; margin-top:14px;">
+            <div style="width:1px; height:20px; background:linear-gradient(to bottom, rgba(184,197,214,0.45), rgba(184,197,214,0.1));"></div>
+            <span style="font-size:0.58rem; letter-spacing:0.4em; text-indent:0.4em;
+                         color:rgba(184,197,214,0.7); font-weight:300; margin:8px 0;">ADMIN · LOGIN</span>
+            <div style="width:1px; height:20px; background:linear-gradient(to bottom, rgba(184,197,214,0.1), transparent);"></div>
+        </div>
+    </div>
+
+    <!-- Form -->
+    <form id="loginForm" class="anim d3" style="display:flex; flex-direction:column; gap:16px;" autocomplete="on">
         <div>
-            <label class="block text-xs text-wa-blue font-light mb-1.5" for="username">帳號</label>
+            <label for="username"
+                   style="display:block; font-size:0.65rem; color:rgba(43,43,43,0.5); font-weight:300;
+                          letter-spacing:0.12em; margin-bottom:7px;">帳號</label>
             <input type="text" id="username" name="username" required autocomplete="username"
-                   class="w-full border border-wa-light rounded px-3 py-2.5 text-sm font-light bg-white text-wa-gray focus:outline-none focus:border-wa-blue transition-colors">
+                   class="wa-input">
         </div>
         <div>
-            <label class="block text-xs text-wa-blue font-light mb-1.5" for="password">密碼</label>
+            <label for="password"
+                   style="display:block; font-size:0.65rem; color:rgba(43,43,43,0.5); font-weight:300;
+                          letter-spacing:0.12em; margin-bottom:7px;">密碼</label>
             <input type="password" id="password" name="password" required autocomplete="current-password"
-                   class="w-full border border-wa-light rounded px-3 py-2.5 text-sm font-light bg-white text-wa-gray focus:outline-none focus:border-wa-blue transition-colors">
+                   class="wa-input">
         </div>
 
-        <p id="errorMsg" class="hidden text-xs text-red-400 font-light text-center py-0.5"></p>
+        <p id="errorMsg" style="display:none; text-align:center; font-size:0.65rem;
+           color:rgba(220,60,60,0.75); font-weight:300;"></p>
 
-        <button type="submit" id="loginBtn"
-                class="w-full py-3 mt-1 bg-wa-blue text-white text-sm font-light rounded transition-all hover:bg-wa-blue/90 active:scale-[0.98] disabled:opacity-50">
-            登入
-        </button>
+        <div class="anim d4" style="padding-top:4px;">
+            <button type="submit" id="loginBtn" class="btn-login">登入</button>
+        </div>
     </form>
 
+    <div class="anim d4" style="text-align:right; margin-top:20px;">
+        <a href="/" style="font-size:0.65rem; letter-spacing:0.12em; color:rgba(184,197,214,0.65);
+           font-weight:300; text-decoration:none; transition:opacity 0.2s;"
+           onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1">← 首頁</a>
+    </div>
+
+</div>
+
+<!-- Bottom label -->
+<div style="position:fixed; bottom:20px; left:0; right:0; text-align:center; pointer-events:none; z-index:10;">
+    <span style="font-size:0.52rem; letter-spacing:0.28em; color:rgba(184,197,214,0.5); font-weight:300;">
+        風嶺拍貼機 · PHOTOBOOTH SYSTEM
+    </span>
 </div>
 
 <script>
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const btn = document.getElementById('loginBtn');
+        const btn    = document.getElementById('loginBtn');
         const errMsg = document.getElementById('errorMsg');
         const username = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value;
 
-        btn.disabled = true;
+        btn.disabled    = true;
         btn.textContent = '登入中...';
-        errMsg.classList.add('hidden');
+        errMsg.style.display = 'none';
 
         try {
             await axios.post('/api/auth/login', { username, password });
             window.location.href = '/admin';
         } catch (err) {
-            errMsg.textContent = err.response?.data?.detail || '登入失敗，請確認帳號密碼';
-            errMsg.classList.remove('hidden');
+            errMsg.textContent   = err.response?.data?.detail || '登入失敗，請確認帳號密碼';
+            errMsg.style.display = 'block';
         } finally {
-            btn.disabled = false;
+            btn.disabled    = false;
             btn.textContent = '登入';
         }
     });

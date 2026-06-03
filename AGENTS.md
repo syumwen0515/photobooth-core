@@ -99,6 +99,9 @@ result = await loop.run_in_executor(None, sync_function, arg1, arg2)
 | 2026-06-02 | 取件碼端點加速率限制 | 防止自動化腳本枚舉取件碼竊取照片 |
 | 2026-06-02 | API Docs 預設關閉 | `/api/docs` 向任何知道 URL 的人暴露完整 API 結構 |
 | 2026-06-02 | 改密碼改用 Modal + `type="password"` | 原 `prompt()` 以明碼顯示密碼輸入；改為頁內 Modal，提供密碼遮罩、確認欄位與前端驗證 |
+| 2026-06-03 | 深/淺色模式用 CSS variables + `data-theme` | 無建置工具環境下最輕量；不依賴 Tailwind dark class purge；全域狀態一個 attribute 搞定 |
+| 2026-06-03 | i18n 用純 JS TRANSLATIONS 物件 | 不引入外部函式庫，維持零建置工具原則；管理頁面文字量不大，物件方案已足夠 |
+| 2026-06-03 | login.html / download.html 移除 Tailwind CDN | 這兩頁邏輯極簡，Tailwind CDN 的額外 JS runtime 不值得；改用純 CSS 同時統一到 frame-corner / vert-label / wa-input 視覺語言 |
 
 ---
 
@@ -151,9 +154,61 @@ async def public_thing(code: str, request: Request) -> ...:
 
 ---
 
+## 深/淺色模式
+
+**admin.html：已完整實作** | login.html / download.html / index.html：尚未擴展
+
+### 設計決策
+- CSS 自訂屬性（variables）方案：在 `:root` 定義 `--wa-cream`、`--wa-gray`、`--wa-light`、`--bg-card`、`--bg-input`、`--border`、`--text-main`、`--shadow-sm` 等 token；深色模式套用 `[data-theme="dark"]` selector 覆寫
+- 偏好以 `localStorage.getItem('pb-theme')` 持久化（`"light"` / `"dark"`，預設 `"light"`）
+- `html` 元素加 `data-theme="light"` 初始屬性；JS 啟動時讀 localStorage 覆寫
+
+### 規則
+- 切換按鈕（`.btn-icon`）放在 admin header 右上角，登出按鈕左側
+- 不引入額外函式庫；`document.documentElement.setAttribute('data-theme', theme)` 套用
+- Tailwind CDN 版本設定 `darkMode: 'class'`，但實際顏色全部走 CSS variables，Tailwind 只負責 layout utilities
+
+### 擴展到其他頁面
+複製 `:root` / `[data-theme="dark"]` token block 與 `toggleTheme()` 函數到目標頁面即可。login / download 目前無需 dark mode。
+
+---
+
+## 多語系 i18n
+
+**admin.html：已完整實作** | login.html / download.html / index.html：尚未擴展
+
+### 設計決策
+- 純 JS 方案：在 HTML `<script>` 中定義 `const TRANSLATIONS = { 'zh-TW': {...}, 'en': {...} }`
+- 以 `data-i18n="key"` 屬性標記需翻譯的靜態元素；`t(key)` 函數取值，`setLang(lang)` 統一刷新
+- 語言偏好存 `localStorage.getItem('pb-lang')`（`"zh-TW"` / `"en"`，預設 `"zh-TW"`）
+- 支援語言：**正體中文（zh-TW）** 和 **英文（en）**
+- 語言切換按鈕（`.btn-icon`）放在 admin header，深/淺色切換旁
+
+### 規則
+- 翻譯物件在各 HTML 的 `<script>` 區塊，不用外部 JSON 或 i18n 函式庫
+- 動態產生的 DOM（renderIncomingCard、renderAccounts 等）需在產生時呼叫 `t(key)` 取當前語系字串
+- `config.py` 不需改動（後端 message 字串語言由前端決定是否顯示）
+
+---
+
+## 前端視覺語言（共用設計元素）
+
+以下元件在 admin / login / download 頁面保持一致，新增頁面或修改前端時應遵循：
+
+| 元件 | 說明 |
+|------|------|
+| `.frame-corner` | 四個角的裝飾線框；`position: absolute`，用 `::before` / `::after` 繪製 L 型 |
+| `.vert-label` | 垂直排列的裝飾文字；`writing-mode: vertical-rl`，字重 300，低對比 |
+| Noto Sans JP | 字重引入 100 / 200 / 300 / 400；標題用 100，一般文字用 300 |
+| `fadeUp` animation | `.anim .d1`–`.d5` 依序延遲淡入；admin 各區塊使用 |
+| 色調 | `#b8c5d6`（wa-blue）為主強調色；主文字 `#2b2b2b`；背景 `#f5f5f0` |
+
+---
+
 ## 不需要做的事
 
 - **不需要** migrations — 沒有資料庫，所有資料存在 JSON 文件
 - **不需要** 安裝 bcrypt / argon2 — 已用 Python 內建 `hashlib.pbkdf2_hmac`
 - **不需要** 前端建置工具 — Tailwind 透過 CDN 載入
 - **不需要** Docker — 設計為 Windows 單機直接執行
+- **不需要** i18n 函式庫（i18next 等）— 純 JS 翻譯物件即可

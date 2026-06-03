@@ -87,6 +87,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 系統一鍵重置（清除所有照片、設定、取件碼、首頁文字、自訂字型）
 - [x] 管理後台「開啟資料夾」快速開啟 incoming 目錄（跨平台；僅本機存取可用，ngrok 等遠端連線自動隱藏按鈕並由後端 403 雙重封鎖）
 - [x] 管理後台重組為 4 個分類 Tab（外觀 / 服務 / 照片 / 系統）
+- [x] 管理後台深/淺色模式切換（CSS variables + `data-theme`，偏好存 `localStorage`）
+- [x] 管理後台多語系（正體中文 / 英文，`data-i18n` 屬性 + `TRANSLATIONS` 物件，偏好存 `localStorage`）
+- [x] login.html / download.html UI 改版（移除 Tailwind CDN；統一 frame-corner / vertical-label 視覺語言）
 
 ## 工作流程
 
@@ -227,4 +230,13 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.4.1 | **更新**: 2026-06-02 | **狀態**: 生產就緒
+**版本**: 0.4.1 | **更新**: 2026-06-03 | **狀態**: 生產就緒
+
+## 開發中 / 規劃中功能
+
+| 功能 | 頁面 | 狀態 | 說明 |
+|------|------|------|------|
+| 深/淺色模式切換 | admin.html | ✅ 完成 | CSS variables + `data-theme`，header 切換按鈕 |
+| 深/淺色模式切換 | login / index | 🚧 規劃中 | 尚未擴展 |
+| 多語系（i18n）| admin.html | ✅ 完成 | `TRANSLATIONS` 物件 + `data-i18n`，支援 zh-TW / en |
+| 多語系（i18n）| login / index | 🚧 規劃中 | 尚未擴展 |
