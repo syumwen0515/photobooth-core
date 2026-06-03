@@ -9,6 +9,7 @@ import subprocess
 import sys
 import random
 import logging
+import math
 import time
 from collections import defaultdict
 from urllib.parse import quote
@@ -789,24 +790,35 @@ def _generate_public_thumbnail(src_path: Path, thumb_path: Path) -> None:
 
     font_size = max(13, w // 16)
     font = _wm_font(font_size)
-
-    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
     text = "風嶺拍貼機"
 
-    bbox = draw.textbbox((0, 0), text, font=font)
+    # Measure text on a dummy surface first
+    _tmp_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    bbox = _tmp_draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-    # Tile diagonally across entire image
+    # Create overlay larger than (w, h) so that after 20° rotation the corners still have coverage
+    angle = 20
+    pad = int(max(w, h) * math.sin(math.radians(angle))) + font_size
+    ow, oh = w + pad * 2, h + pad * 2
+
+    overlay = Image.new("RGBA", (ow, oh), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
     step_x = tw + max(30, w // 6)
     step_y = th + max(24, h // 8)
-    for row, base_y in enumerate(range(-step_y, h + step_y, step_y)):
+    for row, base_y in enumerate(range(-step_y, oh + step_y, step_y)):
         offset_x = (tw // 2) if row % 2 else 0
-        for base_x in range(-step_x + offset_x, w + step_x, step_x):
+        for base_x in range(-step_x + offset_x, ow + step_x, step_x):
             draw.text((base_x, base_y), text, font=font, fill=(255, 255, 255, 48))
 
-    rotated = overlay.rotate(20, expand=False)
-    result = Image.alpha_composite(img, rotated).convert("RGB")
+    rotated = overlay.rotate(angle, expand=False)
+    # Crop the center (w, h) region from the rotated overlay
+    left = (ow - w) // 2
+    top = (oh - h) // 2
+    cropped = rotated.crop((left, top, left + w, top + h))
+
+    result = Image.alpha_composite(img, cropped).convert("RGB")
     buf = io.BytesIO()
     result.save(buf, "WEBP", quality=72, method=4)
     thumb_path.write_bytes(buf.getvalue())
