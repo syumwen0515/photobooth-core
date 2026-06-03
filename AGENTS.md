@@ -136,6 +136,9 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-03 | 浮水印文字變更後呼叫 `_invalidate_public_thumbs()` 清空快取 | 浮水印已 bake 進縮圖 WebP；若不清快取，舊浮水印文字繼續顯示直到永遠（`max-age=86400` 且快取命名只用 filename hash）；強制清除確保下次請求立即重新生成 |
 | 2026-06-03 | `/api/gallery` 加入 `enabled` 欄位；index.html 頁面載入時先 fetch 一次 | 原本 gallery lazy-load 在 scroll 25% 時才觸發；disabled 時 scroll-hint 仍可見，誘導用戶嘗試捲動；提早在 `DOMContentLoaded` 後立即 fetch，disabled 則同步隱藏 scroll-hint 與 gallery-section |
 | 2026-06-03 | 縮圖 URL 帶 `?v={wm_version}` query 使瀏覽器快取失效 | 公開縮圖帶 `Cache-Control: private, max-age=86400`；伺服器端刪除舊快取後，瀏覽器仍會使用已快取的回應長達 24 小時；`wm_version` 是浮水印文字的 MD5 前 8 碼，浮水印一改 URL 就變，瀏覽器視為新資源強制重新 fetch，無需修改 Cache-Control 設定 |
+| 2026-06-03 | `_verify_password()` 改用 `hmac.compare_digest()` | 字串 `==` 比較是 short-circuit，長度或前段不同時提前返回，造成 timing side channel；`hmac.compare_digest` 保證恆定時間比較，消除此攻擊面（CWE-697）；即使 PBKDF2 計算時間已主導整體延遲，此變更代價為零，無理由不採用 |
+| 2026-06-03 | `delete_bg` / `delete_font` 改用 try-except 而非先 exists() 再 unlink() | 先檢查 exists() 再 unlink() 是 TOCTOU 競態（CWE-367）：另一請求可能在兩者之間刪除該檔案，使 unlink 拋出 `FileNotFoundError`；改為直接 unlink 並捕捉 `FileNotFoundError` 才是原子操作的正確寫法；`webp_path.unlink(missing_ok=True)` 同理消除伴生 WebP 的競態 |
+| 2026-06-03 | LINE API 呼叫設定 10 秒 timeout | `MessagingApi.reply_message` 若 LINE 伺服器無回應，預設無 timeout 會讓 worker 永久掛起；10 秒已足夠正常回應，逾時後由 SDK 拋出例外，不影響主事件迴圈（因為 `_handle_text` 不在 async context 中直接等待） |
 
 ---
 
@@ -155,6 +158,8 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**在 login form 移除 `method="post"` 屬性
 - **不得**在 `update_gallery_settings` 移除 `_invalidate_public_thumbs()` 呼叫 — 浮水印已 bake 進縮圖，不清快取舊浮水印永不消失
 - **不得**在 `loadPhotoToCanvas` 移除 `?v={wm_version}` query — 這是唯一能繞過瀏覽器 24 小時快取使浮水印變更即時生效的機制
+- **不得**在 `_verify_password()` 將 `hmac.compare_digest()` 改回 `==` 字串比較 — `==` 有 short-circuit timing side channel（CWE-697），`hmac.compare_digest` 是正確的恆定時間比較方式
+- **不得**在 `delete_bg` / `delete_font` 中恢復先 `.exists()` 再 `.unlink()` 的模式 — 必須直接 `.unlink()` 並捕捉 `FileNotFoundError`，以消除 TOCTOU 競態（CWE-367）
 
 ---
 

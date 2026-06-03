@@ -630,12 +630,11 @@ async def upload_bg(file: UploadFile = File(...), pb_session: Optional[str] = Co
 async def delete_bg(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, str]:
     _require_auth(pb_session)
     bg_path = BG_DIR / "bg.jpg"
-    if not bg_path.exists():
+    try:
+        bg_path.unlink()
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="尚未上傳底圖")
-    bg_path.unlink()
-    webp_path = BG_DIR / "bg.webp"
-    if webp_path.exists():
-        webp_path.unlink()
+    (BG_DIR / "bg.webp").unlink(missing_ok=True)
     return {"message": "底圖已刪除"}
 
 
@@ -784,13 +783,14 @@ async def delete_font(filename: str, pb_session: Optional[str] = Cookie(default=
     if not validate_filename_safety(filename):
         raise HTTPException(status_code=400, detail="無效的檔案名稱")
     font_path = FONTS_DIR / filename
-    if not font_path.exists():
-        raise HTTPException(status_code=404, detail="找不到字型")
     try:
         font_path.resolve().relative_to(FONTS_DIR.resolve())
     except ValueError:
         raise HTTPException(status_code=400, detail="路徑驗證失敗")
-    font_path.unlink()
+    try:
+        font_path.unlink()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="找不到字型")
     fonts = [f for f in _load_fonts_meta() if f["filename"] != filename]
     _save_fonts_meta(fonts)
     return {"message": f"已刪除字型 {filename}"}

@@ -28,6 +28,7 @@ def init(
     _code_lookup = code_lookup
     _get_base_url = get_base_url
     _messaging_config = Configuration(access_token=channel_access_token)
+    _messaging_config.timeout = 10.0  # LINE API 呼叫最多等 10 秒
 
     handler = WebhookHandler(channel_secret)
 

@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import hmac
 import json
 import secrets
 from datetime import datetime, timedelta
@@ -43,9 +44,9 @@ def _hash_password(password: str, salt: str) -> str:
 def _verify_password(password: str, account: dict) -> bool:
     algo = account.get("algo", "sha256")
     if algo == "pbkdf2":
-        return account["password_hash"] == _hash_password_pbkdf2(password, account["salt"])
+        return hmac.compare_digest(account["password_hash"], _hash_password_pbkdf2(password, account["salt"]))
     # 舊 SHA-256 帳號：驗證成功後自動升級
-    if account["password_hash"] == _hash_password_sha256(password, account["salt"]):
+    if hmac.compare_digest(account["password_hash"], _hash_password_sha256(password, account["salt"])):
         return True
     return False
 

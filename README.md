@@ -103,6 +103,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] Login form 修補 CWE-598（加 `method="post"`，密碼不再可能出現於 URL query string）
 - [x] CSP header 全面強化（補齊 `default-src`、`script-src`、`style-src`、`font-src`、`img-src`、`connect-src`、`form-action`，消除 ZAP 的 4 個 Medium CSP 警告）
 - [x] Axios CDN 加 SRI（`integrity="sha384-..."` + 固定版本 `axios@1.16.1`，防止 CDN 供應鏈攻擊）
+- [x] 密碼雜湊比較改用 `hmac.compare_digest()`（消除 timing side channel，CWE-697）
+- [x] `delete_bg` / `delete_font` 消除 TOCTOU 競態（先 exists() 再 unlink() 改為直接 unlink() + 捕捉 FileNotFoundError，CWE-367）
+- [x] LINE API 呼叫設定 10 秒 timeout（防止 LINE 服務無回應時 worker 永久掛起）
 
 ## 工作流程
 
@@ -223,7 +226,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 | 機制 | 說明 |
 |------|------|
-| 密碼雜湊 | **PBKDF2-HMAC-SHA256**（260,000 rounds + 隨機 salt）；舊 SHA-256 帳號於下次登入時自動靜默升級 |
+| 密碼雜湊 | **PBKDF2-HMAC-SHA256**（260,000 rounds + 隨機 salt）；舊 SHA-256 帳號於下次登入時自動靜默升級；雜湊比較使用 `hmac.compare_digest()`（恆定時間，消除 timing side channel）|
 | Session Cookie | `pb_session`（HttpOnly、SameSite=Lax、7 天 TTL；`SECURE_COOKIES=true` 時加上 Secure flag）|
 | Session 清理 | 服務啟動後每小時自動清理過期 session，防止記憶體無限成長 |
 | 登入保護 | 同一帳號 10 分鐘內失敗 5 次 → 鎖定 10 分鐘 |
@@ -259,7 +262,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.4.3 | **更新**: 2026-06-03 | **狀態**: 生產就緒
+**版本**: 0.4.3 | **更新**: 2026-06-03（安全性強化）| **狀態**: 生產就緒
 
 ## 開發中 / 規劃中功能
 
