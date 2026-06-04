@@ -96,7 +96,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 照片防下載保護 — Gallery（Canvas 渲染 + blob URL 立即撤銷 + contextmenu/drag/鍵盤快捷鍵攔截 + CSS print 隱藏）
 - [x] 照片防下載保護 — 取件頁面（同 Gallery：Canvas + 透明 overlay 攔截右鍵/長按/拖曳，無法從頁面直接另存；**下載按鈕優先使用 Web Share API**，iOS 15+ / Android 86+ 用戶可直接從分享選單「存入相簿」；不支援時 fallback 為 blob URL 下載；無 Web Share 的手機用戶顯示引導提示）
 - [x] 取件頁下載進度條（`ReadableStream` 逐塊讀取；有 `Content-Length` 顯示 0–100% 進度條；無則顯示 shimmer 動畫 + 已接收 bytes；完成後自動淡出；**Web Share API 僅在觸控設備觸發**，桌機直接下載不跳分享視窗）
-- [x] 取件頁照片 shimmer 骨架（fetch 期間顯示 shimmer loading；iOS Safari canvas context 在 resize 後重新取得修正繪製失敗；`overflow-x: hidden` 修正直式大圖小螢幕按鈕被裁問題；fetch 失敗顯示錯誤提示）
+- [x] 取件頁照片顯示改用 `<img>`（修正行動端不顯示問題：原 canvas + blob URL 方案在 iOS Safari 因 `.anim` opacity 衝突與 drawImage 不穩定導致永遠不可見；`<img>` + `-webkit-touch-callout: none` + overlay 在所有瀏覽器可靠顯示，同時防止 iOS 長按儲存）
 - [x] 公開縮圖浮水印（Server-side Pillow 斜向重複浮水印；快取以 MD5 hash 命名，避免中文檔名相容問題）
 - [x] Gallery 相片動畫（相片載入後 stagger 淡入 + scale 放大進場；hover 輕微浮起；gallery header 滑入動畫）
 - [x] **Gallery 管理後台控制**（管理員可開啟/關閉 Gallery 區塊；可自訂浮水印文字最多 40 字元；浮水印變更後伺服器自動清除公開縮圖快取，前端以 `?v={wm_version}` query 參數同步使瀏覽器快取失效）
@@ -281,7 +281,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.5.5 | **更新**: 2026-06-04（取件頁行動端照片載入修正：shimmer 骨架、iOS Safari canvas context 修正、overflow 允許垂直捲動、錯誤提示）| **狀態**: 生產就緒
+**版本**: 0.5.6 | **更新**: 2026-06-04（取件頁照片改 `<img>` 顯示修正行動端不可見問題：canvas + blob URL 的 opacity 衝突與 iOS drawImage 不穩定根本修正）| **狀態**: 生產就緒
 
 ## 開發中 / 規劃中功能
 

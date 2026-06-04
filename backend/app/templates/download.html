@@ -46,46 +46,37 @@
             color: rgba(184, 197, 214, 0.6);
         }
 
-        /* Photo canvas wrap */
+        /* Photo wrap */
         .photo-wrap {
             position: relative;
             border-radius: 4px;
             overflow: hidden;
             box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+            min-height: 200px;
+            background: rgba(43, 43, 43, 0.04);
         }
-        /* Loading skeleton — shown until image draws to canvas */
-        @keyframes shimmerLoad {
-            0%   { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-        .photo-wrap.loading {
-            min-height: 220px;
-            background: linear-gradient(
-                90deg,
-                rgba(43,43,43,0.03) 0%,
-                rgba(43,43,43,0.08) 50%,
-                rgba(43,43,43,0.03) 100%
-            );
-            background-size: 200% 100%;
-            animation: shimmerLoad 1.6s ease infinite;
-        }
-        .photo-canvas {
+
+        /* Photo image — pointer-events: none so overlay intercepts all touches */
+        .photo-img {
             width: 100%;
             display: block;
+            border-radius: 4px;
             user-select: none;
             -webkit-user-select: none;
             pointer-events: none;
-            touch-action: none;
+            /* iOS Safari: disables the long-press "Save Image" callout */
+            -webkit-touch-callout: none;
         }
+
         /* Transparent overlay — intercepts right-click, long-press, drag */
         .photo-overlay {
             position: absolute;
             inset: 0;
             z-index: 2;
-            cursor: default;
             -webkit-user-select: none;
             user-select: none;
         }
+
         /* Error state */
         .photo-error {
             position: absolute;
@@ -98,7 +89,6 @@
             color: rgba(184, 197, 214, 0.65);
             font-weight: 300;
             z-index: 3;
-            min-height: 120px;
         }
 
         .btn-download {
@@ -228,9 +218,14 @@
         <div style="width:36px; height:1px; background:rgba(184,197,214,0.45);"></div>
     </div>
 
-    <!-- Photo (canvas — no direct save possible) -->
-    <div id="photo-wrap" class="photo-wrap loading anim d2">
-        <canvas id="photo-canvas" class="photo-canvas" data-i18n-aria="dl.photoAlt" aria-label="您的照片"></canvas>
+    <!-- Photo -->
+    <div id="photo-wrap" class="photo-wrap anim d2">
+        <img id="photo-img"
+             src="/api/photo/{code}/thumb"
+             class="photo-img"
+             data-i18n-alt="dl.photoAlt"
+             alt="您的照片"
+             draggable="false">
         <div class="photo-overlay"></div>
         <div id="photo-error" class="photo-error" data-i18n="dl.loadError">照片載入失敗，請重新整理</div>
     </div>
@@ -297,41 +292,13 @@
         document.querySelectorAll('[data-i18n-alt]').forEach(function (el) {
             el.alt = t(el.dataset.i18nAlt);
         });
-        var canvas = document.getElementById('photo-canvas');
-        if (canvas) canvas.setAttribute('aria-label', t('dl.photoAlt'));
     }
     applyLang(_lang);
 
-    /* ── Load thumbnail to canvas (WebP 480px, saves bandwidth) ── */
-    (function () {
-        var wrap   = document.getElementById('photo-wrap');
-        var canvas = document.getElementById('photo-canvas');
-        var errEl  = document.getElementById('photo-error');
-
-        function showError() {
-            wrap.classList.remove('loading');
-            wrap.style.minHeight = '120px';
-            errEl.style.display = 'flex';
-        }
-
-        fetch('/api/photo/{code}/thumb')
-            .then(function (r) { return r.ok ? r.blob() : Promise.reject(); })
-            .then(function (blob) {
-                var url = URL.createObjectURL(blob);
-                var img = new Image();
-                img.onload = function () {
-                    canvas.width  = img.naturalWidth;
-                    canvas.height = img.naturalHeight;
-                    /* Get context AFTER resizing — canvas.width= resets context state on some iOS versions */
-                    canvas.getContext('2d').drawImage(img, 0, 0);
-                    URL.revokeObjectURL(url);
-                    wrap.classList.remove('loading');
-                };
-                img.onerror = function () { URL.revokeObjectURL(url); showError(); };
-                img.src = url;
-            })
-            .catch(showError);
-    })();
+    /* ── Photo error handler ── */
+    document.getElementById('photo-img').addEventListener('error', function () {
+        document.getElementById('photo-error').style.display = 'flex';
+    });
 
     /* ── Anti-save protections ── */
     document.addEventListener('contextmenu', function (e) {
