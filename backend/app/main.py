@@ -1054,7 +1054,7 @@ async def open_incoming_folder(request: Request, pb_session: Optional[str] = Coo
 @app.get(f"{API_ADMIN_PREFIX}/ngrok/status", tags=["Ngrok"])
 async def get_ngrok_status(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
     _require_auth(pb_session)
-    return {"active": ngrok_is_active(), "public_url": get_tunnel_url()}
+    return {"active": ngrok_is_active(), "public_url": get_tunnel_url(), "has_token": _load_ngrok_token() is not None}
 
 
 class NgrokTokenRequest(BaseModel):
@@ -1078,6 +1078,8 @@ async def save_ngrok_token(request: NgrokTokenRequest, pb_session: Optional[str]
 async def start_ngrok(request: NgrokStartRequest, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
     _require_auth(pb_session)
     token = _load_ngrok_token()
+    if token is None:
+        raise HTTPException(status_code=400, detail="請先設定 ngrok Auth Token，或透過環境變數 NGROK_AUTHTOKEN 注入")
     try:
         loop = asyncio.get_running_loop()
         public_url = await loop.run_in_executor(
@@ -1172,6 +1174,21 @@ async def reset_system(pb_session: Optional[str] = Cookie(default=None)) -> Dict
 
     results = {}
 
+    # 停止並清除 ngrok 設定
+    try:
+        if ngrok_is_active():
+            stop_tunnel()
+        if NGROK_CONFIG_FILE.exists():
+            NGROK_CONFIG_FILE.unlink()
+        try:
+            from pyngrok import conf as _ngrok_conf
+            _ngrok_conf.get_default().auth_token = None
+        except Exception:
+            pass
+        results["ngrok_config"] = "已清除"
+    except Exception as e:
+        results["ngrok_config"] = f"失敗: {e}"
+
     # 清除 LINE BOT 設定
     try:
         if LINE_CONFIG_FILE.exists():
@@ -1223,6 +1240,17 @@ async def reset_system(pb_session: Optional[str] = Cookie(default=None)) -> Dict
         results["index_text"] = "已重置為預設值"
     except Exception as e:
         results["index_text"] = f"失敗: {e}"
+
+    # 重置 Gallery 設定（含清除 in-memory 快取）
+    try:
+        global _gallery_config_cache
+        if GALLERY_CONFIG_FILE.exists():
+            GALLERY_CONFIG_FILE.unlink()
+        _gallery_config_cache = None
+        _invalidate_public_thumbs()
+        results["gallery_config"] = "已重置為預設值"
+    except Exception as e:
+        results["gallery_config"] = f"失敗: {e}"
 
     # 清除自訂字型
     try:

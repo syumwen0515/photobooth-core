@@ -593,6 +593,7 @@
                         <div id="ngrokTokenRow" class="flex items-center gap-2">
                             <span class="text-xs text-wa-blue font-light whitespace-nowrap">Auth Token</span>
                             <input id="ngrokTokenInput" type="password" class="wa-input flex-1" data-i18n-placeholder="ngrok.tokenPlaceholder">
+                            <span id="ngrokTokenSaved" class="text-xs text-wa-blue/70 font-light hidden" data-i18n="ngrok.tokenSaved">✓ 已儲存</span>
                             <button onclick="toggleTokenVisibility()" id="ngrokTokenToggle"
                                     class="btn-outline whitespace-nowrap" data-i18n="btn.show">顯示</button>
                         </div>
@@ -852,6 +853,7 @@
             'ngrok.start':         '啟動 ngrok',
             'ngrok.stop':          '停止',
             'ngrok.tokenPlaceholder': '留空則使用環境變數',
+            'ngrok.tokenSaved':    '✓ Token 已儲存',
             'ngrok.publicUrl':     '公開網址',
             'ngrok.hint':          '啟動後 LINE BOT Webhook URL 將自動改用 ngrok 公開網址。',
             'gallery.title':       'Gallery 設定',
@@ -972,6 +974,7 @@
             'ngrok.start':         'Start ngrok',
             'ngrok.stop':          'Stop',
             'ngrok.tokenPlaceholder': 'Leave blank to use env var',
+            'ngrok.tokenSaved':    '✓ Token saved',
             'ngrok.publicUrl':     'Public URL',
             'ngrok.hint':          'The LINE BOT webhook URL automatically switches to the ngrok public URL when active.',
             'gallery.title':       'Gallery Settings',
@@ -1519,15 +1522,16 @@
     // ═══════════════════════════════════════════════
     // ngrok
     // ═══════════════════════════════════════════════
-    function applyNgrokUI(active, url) {
-        const dot      = document.getElementById('ngrokDot');
-        const label    = document.getElementById('ngrokStatus');
-        const badge    = document.getElementById('ngrokBadge');
-        const startBtn = document.getElementById('ngrokStartBtn');
-        const stopBtn  = document.getElementById('ngrokStopBtn');
-        const tokenRow = document.getElementById('ngrokTokenRow');
-        const urlRow   = document.getElementById('ngrokUrlRow');
-        const urlLink  = document.getElementById('ngrokUrlLink');
+    function applyNgrokUI(active, url, hasToken) {
+        const dot       = document.getElementById('ngrokDot');
+        const label     = document.getElementById('ngrokStatus');
+        const badge     = document.getElementById('ngrokBadge');
+        const startBtn  = document.getElementById('ngrokStartBtn');
+        const stopBtn   = document.getElementById('ngrokStopBtn');
+        const tokenRow  = document.getElementById('ngrokTokenRow');
+        const urlRow    = document.getElementById('ngrokUrlRow');
+        const urlLink   = document.getElementById('ngrokUrlLink');
+        const savedBadge = document.getElementById('ngrokTokenSaved');
 
         if (active && url) {
             dot.style.background = '#4ade80';
@@ -1547,13 +1551,17 @@
             stopBtn.classList.add('hidden');
             tokenRow.classList.remove('hidden');
             urlRow.classList.add('hidden');
+            if (savedBadge) {
+                savedBadge.textContent = t('ngrok.tokenSaved');
+                savedBadge.classList.toggle('hidden', !hasToken);
+            }
         }
     }
 
     async function loadNgrokStatus() {
         try {
             const res = await axios.get(`${API_URL}/api/admin/ngrok/status`);
-            applyNgrokUI(res.data.active, res.data.public_url);
+            applyNgrokUI(res.data.active, res.data.public_url, res.data.has_token);
         } catch (_) {}
     }
 
@@ -1944,6 +1952,7 @@
                 .join('');
             resultEl.classList.remove('hidden');
             loadIncoming();
+            loadNgrokStatus();
             loadLineConfig();
             loadBgStatus();
             await loadCustomFonts();

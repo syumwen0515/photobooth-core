@@ -8,7 +8,7 @@ from pathlib import Path
 
 # 應用程式設定
 APP_TITLE = "智能拍貼機邊緣端系統"
-APP_VERSION = "0.4.4"
+APP_VERSION = "0.4.6"
 APP_DESCRIPTION = "支援 WebSocket 即時預覽、取件碼系統、LINE BOT 整合的展場級拍貼系統"
 
 # 目錄路徑配置
