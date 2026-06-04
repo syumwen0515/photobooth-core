@@ -1230,6 +1230,37 @@ async def serve_photo(code: str, request: Request, dl: int = 0) -> FileResponse:
     )
 
 
+@app.get("/api/photo/{code}/thumb", tags=["Photo Pickup"])
+async def serve_photo_thumb(code: str, request: Request) -> FileResponse:
+    """取件預覽縮圖（480px WebP，無浮水印）：供 download.html Canvas 載入，避免傳輸全尺寸原圖。"""
+    if not _check_code_rate_limit(_get_client_ip(request)):
+        raise HTTPException(status_code=429, detail="請求過於頻繁，請稍後再試")
+    code = code.strip().upper()
+    filename = _lookup_code(code)
+    if not filename:
+        raise HTTPException(status_code=404, detail="找不到對應照片")
+    src_path = INCOMING_DIR / filename
+    if not src_path.exists():
+        raise HTTPException(status_code=404, detail="照片檔案不存在")
+    try:
+        src_path.resolve().relative_to(INCOMING_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="路徑驗證失敗")
+    thumb_path = THUMB_DIR / f"{filename}.thumb.webp"
+    if not thumb_path.exists():
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, _generate_thumbnail, src_path, thumb_path)
+        except Exception as e:
+            logger.error(f"取件縮圖生成失敗 {filename}: {e}")
+            raise HTTPException(status_code=500, detail="縮圖生成失敗")
+    return FileResponse(
+        str(thumb_path),
+        media_type="image/webp",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
 # ==================== 系統重置 API ====================
 
 @app.post(f"{API_ADMIN_PREFIX}/reset", tags=["System"])

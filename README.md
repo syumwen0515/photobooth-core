@@ -93,7 +93,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] **全頁面多語系擴展**（login / index / download 全部支援 zh-TW / en；自動偵測 `navigator.language`，`zh` 開頭→繁中，其餘→英文；`localStorage('pb-lang')` 跨頁持久化，admin.html 手動切換後其他頁面跟隨）
 - [x] login.html / download.html UI 改版（移除 Tailwind CDN；統一 frame-corner / vertical-label 視覺語言）
 - [x] 公開照片集 Gallery（首頁向下捲動切換；scroll-snap 兩區塊設計）
-- [x] 照片防下載保護（Canvas 渲染 + blob URL 立即撤銷 + contextmenu/drag/鍵盤快捷鍵攔截 + CSS print 隱藏）
+- [x] 照片防下載保護 — Gallery（Canvas 渲染 + blob URL 立即撤銷 + contextmenu/drag/鍵盤快捷鍵攔截 + CSS print 隱藏）
+- [x] 照片防下載保護 — 取件頁面（同 Gallery：Canvas + 透明 overlay 攔截右鍵/長按/拖曳，無法從頁面直接另存；**下載按鈕優先使用 Web Share API**，iOS 15+ / Android 86+ 用戶可直接從分享選單「存入相簿」；不支援時 fallback 為 blob URL 下載；無 Web Share 的手機用戶顯示引導提示）
 - [x] 公開縮圖浮水印（Server-side Pillow 斜向重複浮水印；快取以 MD5 hash 命名，避免中文檔名相容問題）
 - [x] Gallery 相片動畫（相片載入後 stagger 淡入 + scale 放大進場；hover 輕微浮起；gallery header 滑入動畫）
 - [x] **Gallery 管理後台控制**（管理員可開啟/關閉 Gallery 區塊；可自訂浮水印文字最多 40 字元；浮水印變更後伺服器自動清除公開縮圖快取，前端以 `?v={wm_version}` query 參數同步使瀏覽器快取失效）
@@ -207,7 +208,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 方法 | 端點 | 說明 |
 |------|------|------|
 | GET | `/download/{code}` | 取件頁面（速率限制：30 次/分/IP）|
-| GET | `/api/photo/{code}` | 取得照片檔案（?dl=1 強制下載；速率限制同上）|
+| GET | `/api/photo/{code}` | 取得照片原檔（`?dl=1` 強制下載；速率限制同上）|
+| GET | `/api/photo/{code}/thumb` | 取件頁預覽縮圖（480px WebP，無浮水印；速率限制同上；有快取）|
 
 ### 即時通訊
 | 方法 | 端點 | 說明 |
@@ -254,7 +256,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | Subresource Integrity | `login.html` / `admin.html` 的 Axios CDN 標籤加上 `integrity="sha384-..."` + 版本固定為 `axios@1.16.1`，瀏覽器驗證 hash 失敗時拒絕執行，防止 CDN 供應鏈攻擊 |
 | 本機限定功能 | `open-incoming-folder` 端點驗證 TCP 連線來源 IP（非 `Host` header，防止 ngrok 環境下的 Host 偽造），非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
-| 公開照片防下載 | Canvas 渲染（不暴露 img src）+ blob URL 使用後立即撤銷 + 右鍵/拖曳/Ctrl+S 攔截；即使 DevTools Network tab 取得的也只是含浮水印的 480px 縮圖 |
+| 公開照片防下載 | **Gallery**：Canvas 渲染（不暴露 img src）+ blob URL 使用後立即撤銷 + 右鍵/拖曳/Ctrl+S 攔截；即使 DevTools Network tab 取得的也只是含浮水印的 480px 縮圖。**取件頁面**：同 Canvas + overlay 設計，無法右鍵/長按另存；下載按鈕優先使用 Web Share API（iOS 15+ / Android 86+），讓用戶直接從分享選單「存入相簿」，舊版或桌機 fallback 為 blob URL 下載 |
 | 縮圖快取命名 | 公開縮圖以 `MD5(filename)` 命名（`pub_<hash>.webp`），避免中文/特殊字元檔名在 Windows 路徑比對不一致；Pillow 讀圖改用 BytesIO，避免 Unicode path 相容問題 |
 | 取件碼生成 | 使用 Python `secrets.choice()`（CSPRNG）生成 6 碼取件碼，確保攻擊者無法從已知碼推算後續碼；`random.choices()`（梅森旋轉，非密碼學安全）已移除 |
 | 敏感 Token 環境變數注入 | `NGROK_AUTHTOKEN`、`LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN` 均支援環境變數覆蓋，優先序高於 JSON 落盤設定；建議展場生產部署時以環境變數注入，不將 Token 存入 `storage/` 明文檔 |
@@ -277,7 +279,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.5.0 | **更新**: 2026-06-04（全頁面多語系擴展：login / index / download 加入 zh-TW / en 切換；語言偏好跨頁持久化）| **狀態**: 生產就緒
+**版本**: 0.5.2 | **更新**: 2026-06-04（取件頁面防下載強化 + 顯示改用 WebP 縮圖：Canvas 預覽用 480px WebP 縮圖、Web Share API 讓手機用戶直接存入相簿、下載才傳輸全尺寸原圖）| **狀態**: 生產就緒
 
 ## 開發中 / 規劃中功能
 

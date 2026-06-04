@@ -46,11 +46,29 @@
             color: rgba(184, 197, 214, 0.6);
         }
 
-        .photo-img {
-            width: 100%;
+        /* Photo canvas wrap */
+        .photo-wrap {
+            position: relative;
             border-radius: 4px;
-            display: block;
+            overflow: hidden;
             box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+        }
+        .photo-canvas {
+            width: 100%;
+            display: block;
+            user-select: none;
+            -webkit-user-select: none;
+            pointer-events: none;
+            touch-action: none;
+        }
+        /* Transparent overlay — intercepts right-click, long-press, drag */
+        .photo-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            cursor: default;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         .btn-download {
@@ -68,6 +86,10 @@
             border-radius: 2px;
             transition: all 0.3s ease;
             font-family: 'Noto Sans JP', sans-serif;
+            background: none;
+            cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
         }
         .btn-download:hover {
             border-color: rgba(43, 43, 43, 0.4);
@@ -75,6 +97,25 @@
             background: rgba(43, 43, 43, 0.04);
         }
         .btn-download:active { transform: scale(0.98); }
+        .btn-download:disabled {
+            opacity: 0.45;
+            cursor: default;
+            transform: none;
+        }
+
+        /* Mobile hint — only shown on touch devices without Web Share API */
+        .mobile-hint {
+            font-size: 0.55rem;
+            letter-spacing: 0.12em;
+            color: rgba(184, 197, 214, 0.7);
+            text-align: center;
+            line-height: 1.7;
+            display: none;
+            padding: 0 4px;
+        }
+        @media (pointer: coarse) {
+            .mobile-hint { display: block; }
+        }
 
         @keyframes fadeUp {
             from { opacity: 0; transform: translateY(14px); }
@@ -114,14 +155,10 @@
         <div style="width:36px; height:1px; background:rgba(184,197,214,0.45);"></div>
     </div>
 
-    <!-- Photo -->
-    <div class="anim d2">
-        <img
-            src="/api/photo/{code}"
-            data-i18n-alt="dl.photoAlt"
-            alt="您的照片"
-            class="photo-img"
-        />
+    <!-- Photo (canvas — no direct save possible) -->
+    <div class="photo-wrap anim d2">
+        <canvas id="photo-canvas" class="photo-canvas" data-i18n-aria="dl.photoAlt" aria-label="您的照片"></canvas>
+        <div class="photo-overlay"></div>
     </div>
 
     <!-- Code + download -->
@@ -132,7 +169,8 @@
             <span style="font-family:monospace; font-size:1.1rem; font-weight:400; letter-spacing:0.25em;
                          color:rgba(43,43,43,0.75); user-select:all;">{code}</span>
         </div>
-        <a href="/api/photo/{code}?dl=1" class="btn-download" data-i18n="dl.btn">下載照片</a>
+        <button id="btn-dl" class="btn-download" data-i18n="dl.btn">下載照片</button>
+        <p class="mobile-hint" id="mobile-hint" data-i18n="dl.mobileHint">下載後請至「檔案」App 長按照片，選擇「加入照片圖庫」</p>
     </div>
 
 </div>
@@ -148,16 +186,18 @@
     /* ── i18n ── */
     const TRANSLATIONS = {
         'zh-TW': {
-            'dl.vertLabel': '照片取件 · PHOTO PICKUP',
-            'dl.photoAlt':  '您的照片',
-            'dl.code':      '取件碼',
-            'dl.btn':       '下載照片',
+            'dl.vertLabel':  '照片取件 · PHOTO PICKUP',
+            'dl.photoAlt':   '您的照片',
+            'dl.code':       '取件碼',
+            'dl.btn':        '下載照片',
+            'dl.mobileHint': '下載後請至「檔案」App 長按照片，選擇「加入照片圖庫」',
         },
         'en': {
-            'dl.vertLabel': 'Photo Pickup · PHOTO PICKUP',
-            'dl.photoAlt':  'Your photo',
-            'dl.code':      'Pickup Code',
-            'dl.btn':       'Download Photo',
+            'dl.vertLabel':  'Photo Pickup · PHOTO PICKUP',
+            'dl.photoAlt':   'Your photo',
+            'dl.code':       'Pickup Code',
+            'dl.btn':        'Download Photo',
+            'dl.mobileHint': 'After downloading, long-press the photo in your Files app and choose "Save to Photos".',
         }
     };
     const _browserLang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
@@ -169,14 +209,101 @@
         _lang = lang;
         localStorage.setItem('pb-lang', lang);
         document.documentElement.lang = lang;
-        document.querySelectorAll('[data-i18n]').forEach(el => {
+        document.querySelectorAll('[data-i18n]').forEach(function (el) {
             el.textContent = t(el.dataset.i18n);
         });
-        document.querySelectorAll('[data-i18n-alt]').forEach(el => {
+        document.querySelectorAll('[data-i18n-alt]').forEach(function (el) {
             el.alt = t(el.dataset.i18nAlt);
         });
+        var canvas = document.getElementById('photo-canvas');
+        if (canvas) canvas.setAttribute('aria-label', t('dl.photoAlt'));
     }
     applyLang(_lang);
+
+    /* ── Load thumbnail to canvas (WebP 480px, saves bandwidth) ── */
+    (function () {
+        var canvas = document.getElementById('photo-canvas');
+        var ctx = canvas.getContext('2d');
+        fetch('/api/photo/{code}/thumb')
+            .then(function (r) { return r.ok ? r.blob() : Promise.reject(); })
+            .then(function (blob) {
+                var url = URL.createObjectURL(blob);
+                var img = new Image();
+                img.onload = function () {
+                    canvas.width  = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    ctx.drawImage(img, 0, 0);
+                    URL.revokeObjectURL(url);
+                };
+                img.onerror = function () { URL.revokeObjectURL(url); };
+                img.src = url;
+            })
+            .catch(function () {});
+    })();
+
+    /* ── Anti-save protections ── */
+    document.addEventListener('contextmenu', function (e) {
+        if (e.target.closest && e.target.closest('.photo-wrap')) e.preventDefault();
+    });
+    document.addEventListener('dragstart', function (e) {
+        if (e.target.closest && e.target.closest('.photo-wrap')) e.preventDefault();
+    });
+    document.addEventListener('keydown', function (e) {
+        var ctrl = e.ctrlKey || e.metaKey;
+        if (ctrl && ['s', 'u', 'p'].includes(e.key.toLowerCase())) e.preventDefault();
+    });
+
+    /* ── Download button — always fetches full-resolution original ── */
+    document.getElementById('btn-dl').addEventListener('click', async function () {
+        var btn = this;
+        var origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '...';
+        try {
+            var resp = await fetch('/api/photo/{code}?dl=1');
+            if (!resp.ok) throw new Error('fetch failed');
+            var blob = await resp.blob();
+            var extMap = { 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' };
+            var ext = extMap[blob.type] || 'jpg';
+            var filename = 'photo_{code}.' + ext;
+
+            /* Web Share API — on iOS 15+ / Android 86+ lets the user save directly to Photos */
+            if (navigator.canShare) {
+                var file = new File([blob], filename, { type: blob.type });
+                if (navigator.canShare({ files: [file] })) {
+                    try {
+                        await navigator.share({ files: [file] });
+                        return;
+                    } catch (err) {
+                        if (err.name === 'AbortError') return; /* user cancelled */
+                        /* Other error: fall through to blob download */
+                    }
+                }
+            }
+
+            /* Fallback: trigger browser download via blob URL */
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+
+        } catch (err) {
+            /* silently fail */
+        } finally {
+            btn.textContent = origText;
+            btn.disabled = false;
+        }
+    });
+
+    /* ── Hide mobile hint when Web Share API is available ── */
+    (function () {
+        var hint = document.getElementById('mobile-hint');
+        if (hint && navigator.canShare) hint.style.display = 'none';
+    })();
 </script>
 </body>
 </html>
