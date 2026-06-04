@@ -16,7 +16,7 @@
             justify-content: center;
             padding: 1rem;
             background: #f5f5f0;
-            overflow: hidden;
+            overflow-x: hidden;
         }
 
         /* Corner bracket decoration */
@@ -53,6 +53,22 @@
             overflow: hidden;
             box-shadow: 0 4px 24px rgba(0,0,0,0.12);
         }
+        /* Loading skeleton — shown until image draws to canvas */
+        @keyframes shimmerLoad {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        .photo-wrap.loading {
+            min-height: 220px;
+            background: linear-gradient(
+                90deg,
+                rgba(43,43,43,0.03) 0%,
+                rgba(43,43,43,0.08) 50%,
+                rgba(43,43,43,0.03) 100%
+            );
+            background-size: 200% 100%;
+            animation: shimmerLoad 1.6s ease infinite;
+        }
         .photo-canvas {
             width: 100%;
             display: block;
@@ -69,6 +85,20 @@
             cursor: default;
             -webkit-user-select: none;
             user-select: none;
+        }
+        /* Error state */
+        .photo-error {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.58rem;
+            letter-spacing: 0.18em;
+            color: rgba(184, 197, 214, 0.65);
+            font-weight: 300;
+            z-index: 3;
+            min-height: 120px;
         }
 
         .btn-download {
@@ -199,9 +229,10 @@
     </div>
 
     <!-- Photo (canvas — no direct save possible) -->
-    <div class="photo-wrap anim d2">
+    <div id="photo-wrap" class="photo-wrap loading anim d2">
         <canvas id="photo-canvas" class="photo-canvas" data-i18n-aria="dl.photoAlt" aria-label="您的照片"></canvas>
         <div class="photo-overlay"></div>
+        <div id="photo-error" class="photo-error" data-i18n="dl.loadError">照片載入失敗，請重新整理</div>
     </div>
 
     <!-- Code + download -->
@@ -240,6 +271,7 @@
             'dl.code':       '取件碼',
             'dl.btn':        '下載照片',
             'dl.mobileHint': '下載後請至「檔案」App 長按照片，選擇「加入照片圖庫」',
+            'dl.loadError':  '照片載入失敗，請重新整理',
         },
         'en': {
             'dl.vertLabel':  'Photo Pickup · PHOTO PICKUP',
@@ -247,6 +279,7 @@
             'dl.code':       'Pickup Code',
             'dl.btn':        'Download Photo',
             'dl.mobileHint': 'After downloading, long-press the photo in your Files app and choose "Save to Photos".',
+            'dl.loadError':  'Failed to load photo, please refresh',
         }
     };
     const _browserLang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
@@ -271,8 +304,16 @@
 
     /* ── Load thumbnail to canvas (WebP 480px, saves bandwidth) ── */
     (function () {
+        var wrap   = document.getElementById('photo-wrap');
         var canvas = document.getElementById('photo-canvas');
-        var ctx = canvas.getContext('2d');
+        var errEl  = document.getElementById('photo-error');
+
+        function showError() {
+            wrap.classList.remove('loading');
+            wrap.style.minHeight = '120px';
+            errEl.style.display = 'flex';
+        }
+
         fetch('/api/photo/{code}/thumb')
             .then(function (r) { return r.ok ? r.blob() : Promise.reject(); })
             .then(function (blob) {
@@ -281,13 +322,15 @@
                 img.onload = function () {
                     canvas.width  = img.naturalWidth;
                     canvas.height = img.naturalHeight;
-                    ctx.drawImage(img, 0, 0);
+                    /* Get context AFTER resizing — canvas.width= resets context state on some iOS versions */
+                    canvas.getContext('2d').drawImage(img, 0, 0);
                     URL.revokeObjectURL(url);
+                    wrap.classList.remove('loading');
                 };
-                img.onerror = function () { URL.revokeObjectURL(url); };
+                img.onerror = function () { URL.revokeObjectURL(url); showError(); };
                 img.src = url;
             })
-            .catch(function () {});
+            .catch(showError);
     })();
 
     /* ── Anti-save protections ── */
