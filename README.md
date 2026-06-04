@@ -97,6 +97,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] Gallery 相片動畫（相片載入後 stagger 淡入 + scale 放大進場；hover 輕微浮起；gallery header 滑入動畫）
 - [x] **Gallery 管理後台控制**（管理員可開啟/關閉 Gallery 區塊；可自訂浮水印文字最多 40 字元；浮水印變更後伺服器自動清除公開縮圖快取，前端以 `?v={wm_version}` query 參數同步使瀏覽器快取失效）
 - [x] 並發刪除防護（`list_incoming` / `get_gallery_list` 的 `stat()` 逐項 try/except，避免並發刪除導致 500）
+- [x] **管理員網頁上傳照片**（管理後台照片 tab 新增「上傳照片」按鈕；支援多選 JPG / PNG，最大 50 MB；自動產生安全檔名（timestamp + 清除特殊字元）並立即指派取件碼；上傳完成後即時插入照片卡片並廣播 WebSocket，`prependIncomingCard` 加冪等防護避免 Watchdog 重複廣播造成雙卡片）
+- [x] **全域佇列上傳 + 右下角懸浮進度視窗**（前端全域 `_uploadQueue` + `_drainUploadQueue` 最多 2 線程並發消化；第一次點擊立即啟動 2 個 worker，第二次點擊（有上傳進行中）只追加到同一佇列等待，不再開啟新的 pool；後端單檔端點讓每個請求有獨立 `onUploadProgress` 回調；右下角懸浮面板逐檔顯示即時進度條、完成打勾（綠）/ 失敗顯示重傳按鈕（紅色循環箭頭，hover 旋轉）；**有失敗未處理時不自動關閉**（`data-upload-failed` 屬性標記，重傳後清除）；全部成功或取消後 3 秒自動收起；點 ✕ 有上傳進行中時跳出確認提示，確認後清空佇列並透過 `AbortController` 中止所有進行中請求）
 - [x] 取件頁面模板快取（`download.html` 改用 `_get_html()` 記憶體快取，不再逐次讀磁碟）
 - [x] 浮水印字型備援強化（`_wm_font()` 新增 `msyh.ttc` / `simsun.ttc`，確保無日文語言包環境仍可渲染中文）
 - [x] IP 速率限制記憶體清理（`_session_cleanup_task` 每小時一併清理 `_code_request_log` 孤兒鍵）
@@ -166,6 +168,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 方法 | 端點 | 說明 |
 |------|------|------|
 | GET | `/api/admin/incoming` | 照片列表（含取件碼）|
+| POST | `/api/admin/upload-incoming` | 上傳照片到 incoming 資料夾（支援多檔，JPG / PNG，最大 50 MB）|
 | GET | `/api/admin/incoming/thumb/{filename}` | 取得縮圖（480px WebP，有快取）|
 | DELETE | `/api/admin/incoming/{filename}` | 刪除單張 |
 | DELETE | `/api/admin/incoming` | 清除全部 |
@@ -219,8 +222,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | `CORS_ORIGINS` | 空（不允許跨來源） | 逗號分隔的允許來源，例如 `https://example.ngrok.io` |
 | `PUBLIC_BASE_URL` | 空 | 未使用 ngrok 時的固定公開網址 |
 | `NGROK_AUTHTOKEN` | — | ngrok Auth Token（優先序高於後台儲存的 Token）|
+| `LINE_CHANNEL_SECRET` | — | LINE Channel Secret（**優先序高於後台儲存的設定**，建議生產部署使用）|
+| `LINE_CHANNEL_ACCESS_TOKEN` | — | LINE Channel Access Token（同上，兩個都設定才生效）|
 | `LOG_LEVEL` | `INFO` | 日誌等級：`DEBUG` / `INFO` / `WARNING` / `ERROR` |
 | `RELOAD_ADMIN_HTML` | `false` | 設為 `true` 停用 HTML 快取（開發用）|
+
+> **安全建議**：生產展場部署時，建議透過環境變數注入所有敏感 Token（`NGROK_AUTHTOKEN`、`LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN`），避免憑證以明文形式落盤於 `storage/` 目錄。
 
 ## 安全性設計
 
@@ -243,6 +250,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
 | 公開照片防下載 | Canvas 渲染（不暴露 img src）+ blob URL 使用後立即撤銷 + 右鍵/拖曳/Ctrl+S 攔截；即使 DevTools Network tab 取得的也只是含浮水印的 480px 縮圖 |
 | 縮圖快取命名 | 公開縮圖以 `MD5(filename)` 命名（`pub_<hash>.webp`），避免中文/特殊字元檔名在 Windows 路徑比對不一致；Pillow 讀圖改用 BytesIO，避免 Unicode path 相容問題 |
+| 取件碼生成 | 使用 Python `secrets.choice()`（CSPRNG）生成 6 碼取件碼，確保攻擊者無法從已知碼推算後續碼；`random.choices()`（梅森旋轉，非密碼學安全）已移除 |
+| 敏感 Token 環境變數注入 | `NGROK_AUTHTOKEN`、`LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN` 均支援環境變數覆蓋，優先序高於 JSON 落盤設定；建議展場生產部署時以環境變數注入，不將 Token 存入 `storage/` 明文檔 |
 
 ## 故障排除
 
@@ -262,7 +271,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.4.3 | **更新**: 2026-06-03（安全性強化）| **狀態**: 生產就緒
+**版本**: 0.4.4 | **更新**: 2026-06-04（安全強化：CSPRNG 取件碼、LINE env var 覆蓋；效能優化：gallery config 快取）| **狀態**: 生產就緒
 
 ## 開發中 / 規劃中功能
 
@@ -273,3 +282,5 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 多語系（i18n）| admin.html | ✅ 完成 | `TRANSLATIONS` 物件 + `data-i18n`，支援 zh-TW / en |
 | 多語系（i18n）| login / index | 🚧 規劃中 | 尚未擴展 |
 | Gallery 管理後台控制 | admin.html | ✅ 完成 | 照片 tab 新增 Gallery 設定卡片：開/關切換（toggle switch）+ 浮水印文字自訂；浮水印變更自動清伺服器快取並以 `wm_version` 使瀏覽器快取失效 |
+| 管理員網頁上傳照片 | admin.html | ✅ 完成 | 照片 tab 新增「上傳照片」按鈕；多選 JPG / PNG；自動安全命名 + 取件碼；即時插卡並廣播 WebSocket |
+| 全域佇列上傳 + 懸浮進度視窗 | admin.html | ✅ 完成 | 2 線程並發全域佇列；第二次點擊繼續排隊不另開 pool；右下角懸浮面板逐檔顯示進度條；完成綠勾 / 失敗紅叉；3 秒自動收起 |

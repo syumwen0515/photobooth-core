@@ -273,6 +273,43 @@
         }
         .toggle-switch input:checked + .toggle-slider { background: #b8c5d6; }
         .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+        /* Upload float panel */
+        #uploadFloatPanel {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 9999;
+            width: 300px;
+        }
+        @keyframes slideUpIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .upload-panel-enter { animation: slideUpIn 0.2s ease; }
+        .upload-float-item-err {
+            font-size: 0.68rem;
+            font-weight: 300;
+            color: rgba(220, 60, 60, 0.75);
+            margin-top: 2px;
+        }
+        .upload-retry-btn {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 2px;
+            color: rgba(248, 113, 113, 0.72);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s, transform 0.45s ease;
+            line-height: 0;
+        }
+        .upload-retry-btn:hover {
+            color: rgba(220, 60, 60, 0.9);
+            transform: rotate(-180deg);
+        }
     </style>
 </head>
 <body class="min-h-screen relative">
@@ -630,6 +667,10 @@
                     <button id="openFolderBtn" onclick="openIncomingFolder()" class="btn-outline" style="font-size:0.7rem; padding:5px 12px;" data-i18n="photos.openFolder">
                         開啟資料夾
                     </button>
+                    <label id="incomingUploadLabel" class="cursor-pointer btn-primary" style="font-size:0.7rem; padding:5px 12px;" data-i18n="photos.upload">
+                        上傳照片
+                        <input type="file" id="incomingUploadFile" accept=".jpg,.jpeg,.png" multiple class="hidden" onchange="uploadIncomingPhotos(this)">
+                    </label>
                     <button onclick="clearIncoming()" class="btn-danger" style="font-size:0.7rem; padding:5px 12px;" data-i18n="photos.clearAll">
                         清除全部
                     </button>
@@ -820,6 +861,9 @@
             'gallery.watermark':   '浮水印文字',
             'gallery.watermarkHint': '顯示於公開 Gallery 縮圖，最多 40 字元',
             'photos.title':        '照片',
+            'photos.upload':       '上傳照片',
+            'photos.uploadPanel':  '上傳進度',
+            'upload.retry':        '重傳',
             'photos.openFolder':   '開啟資料夾',
             'photos.clearAll':     '清除全部',
             'photos.empty':        '尚無待選照片',
@@ -866,6 +910,7 @@
             'msg.saved':           '✓ 已儲存',
             'msg.uploaded':        '✓ 上傳成功',
             'confirm.clearAll':    '確定要清除全部待選照片？',
+            'confirm.cancelUpload': '上傳仍在進行中，確定要取消所有上傳？',
             'confirm.deleteFont':  '確定要刪除字型「{0}」？',
             'confirm.deleteAccount': '確定要刪除帳號「{0}」？',
             'confirm.deleteBg':    '確定要移除底圖嗎？',
@@ -936,6 +981,9 @@
             'gallery.watermark':   'Watermark text',
             'gallery.watermarkHint': 'Shown on public gallery thumbnails. Max 40 characters.',
             'photos.title':        'Photos',
+            'photos.upload':       'Upload Photos',
+            'photos.uploadPanel':  'Upload Progress',
+            'upload.retry':        'Retry',
             'photos.openFolder':   'Open Folder',
             'photos.clearAll':     'Clear All',
             'photos.empty':        'No photos yet',
@@ -982,6 +1030,7 @@
             'msg.saved':           '✓ Saved',
             'msg.uploaded':        '✓ Uploaded',
             'confirm.clearAll':    'Clear all photos?',
+            'confirm.cancelUpload': 'Upload is in progress. Cancel all uploads?',
             'confirm.deleteFont':  'Delete font "{0}"?',
             'confirm.deleteAccount': 'Delete account "{0}"?',
             'confirm.deleteBg':    'Remove the background image?',
@@ -1197,6 +1246,7 @@
 
     function prependIncomingCard(filename, code) {
         const grid  = document.getElementById('incomingGrid');
+        if (document.getElementById(`inc-${CSS.escape(filename)}`)) return;
         const empty = grid.querySelector('.col-span-full');
         if (empty) empty.remove();
         grid.insertAdjacentHTML('afterbegin', renderIncomingCard(filename, code));
@@ -1243,6 +1293,227 @@
         } catch (err) {
             alert(t('err.openFolderFail') + (err.response?.data?.detail || ''));
         }
+    }
+
+    // ═══════════════════════════════════════════════
+    // 上傳進度懸浮視窗
+    // ═══════════════════════════════════════════════
+    let _uploadAutoCloseTimer = null;
+    const _uploadControllers  = new Map(); // uid → AbortController（進行中的請求）
+    const _cancelledUids      = new Set(); // 已取消的 uid
+    const _uploadFileMap      = new Map(); // uid → File（供失敗後重傳使用）
+    const _uploadQueue        = [];        // 全域等待佇列 {file, uid}
+    let _uploadActiveCount    = 0;         // 進行中的上傳數
+    const _UPLOAD_CONCURRENCY = 2;        // 最大並發數
+
+    function showUploadPanel() {
+        const panel = document.getElementById('uploadFloatPanel');
+        clearTimeout(_uploadAutoCloseTimer);
+        if (panel.style.display === 'none') {
+            panel.style.display = '';
+            panel.classList.remove('upload-panel-enter');
+            void panel.offsetWidth;   // reflow 觸發重播
+            panel.classList.add('upload-panel-enter');
+        }
+    }
+
+    function closeUploadPanel() {
+        clearTimeout(_uploadAutoCloseTimer);
+        document.getElementById('uploadFloatPanel').style.display = 'none';
+        document.getElementById('uploadFloatList').innerHTML = '';
+        _uploadFileMap.clear();
+    }
+
+    // X 按鈕進入點：有進行中的上傳才詢問確認，否則直接關閉
+    function _onUploadPanelClose() {
+        const active = document.querySelectorAll('.upload-bar-active').length;
+        if (active > 0) {
+            if (!confirm(t('confirm.cancelUpload'))) return;
+            _cancelAllUploads();
+        }
+        closeUploadPanel();
+    }
+
+    // 中止所有進行中與排隊中的上傳
+    function _cancelAllUploads() {
+        // 清空等待佇列
+        _uploadQueue.splice(0);
+        // 將所有進行中與排隊中的項目標記為已取消
+        document.querySelectorAll('.upload-bar-active').forEach(bar => {
+            const uid = bar.id.replace('upload-bar-', '');
+            _cancelledUids.add(uid);
+            _setUploadCancelled(uid);
+        });
+        // 中止所有進行中的 HTTP 請求
+        _uploadControllers.forEach(ctrl => ctrl.abort());
+        _uploadControllers.clear();
+    }
+
+    function _scheduleUploadAutoClose() {
+        clearTimeout(_uploadAutoCloseTimer);
+        _uploadAutoCloseTimer = setTimeout(() => {
+            const stillActive = document.querySelectorAll('.upload-bar-active').length;
+            const hasFailed   = document.querySelectorAll('[data-upload-failed]').length;
+            if (!stillActive && !hasFailed) {
+                _cancelledUids.clear();
+                closeUploadPanel();
+            }
+        }, 3000);
+    }
+
+    function _addUploadItem(uid, filename) {
+        const list = document.getElementById('uploadFloatList');
+        const safe = escHtml(filename.length > 28 ? filename.slice(0, 25) + '…' : filename);
+        const div  = document.createElement('div');
+        div.id = `upload-item-${uid}`;
+        div.innerHTML = `
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                <span class="text-xs font-light truncate" style="color:var(--text-main); flex:1; min-width:0;">${safe}</span>
+                <span id="upload-pct-${uid}" class="text-xs font-light flex-shrink-0" style="color:#b8c5d6;">0%</span>
+                <button id="upload-retry-${uid}" class="upload-retry-btn" onclick="_retryUpload('${uid}')" title="${t('upload.retry')}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+                    </svg>
+                </button>
+            </div>
+            <div style="height:2px; background:var(--wa-light); border-radius:9999px; overflow:hidden;">
+                <div id="upload-bar-${uid}" class="upload-bar-active"
+                     style="width:0%; height:100%; background:#b8c5d6; border-radius:9999px; transition:width 0.1s ease;"></div>
+            </div>`;
+        list.appendChild(div);
+    }
+
+    function _setUploadProgress(uid, pct) {
+        const bar   = document.getElementById(`upload-bar-${uid}`);
+        const pctEl = document.getElementById(`upload-pct-${uid}`);
+        if (bar)   bar.style.width    = `${pct}%`;
+        if (pctEl) pctEl.textContent  = `${pct}%`;
+    }
+
+    function _setUploadDone(uid) {
+        const bar   = document.getElementById(`upload-bar-${uid}`);
+        const pctEl = document.getElementById(`upload-pct-${uid}`);
+        if (bar)   { bar.style.width = '100%'; bar.style.background = '#86c89a'; bar.classList.remove('upload-bar-active'); }
+        if (pctEl) { pctEl.textContent = '✓'; pctEl.style.color = '#86c89a'; }
+    }
+
+    function _setUploadCancelled(uid) {
+        const bar   = document.getElementById(`upload-bar-${uid}`);
+        const pctEl = document.getElementById(`upload-pct-${uid}`);
+        if (bar)   { bar.style.background = 'var(--wa-light)'; bar.classList.remove('upload-bar-active'); }
+        if (pctEl) { pctEl.textContent = '—'; pctEl.style.color = '#b8c5d6'; }
+    }
+
+    function _setUploadError(uid, errMsg) {
+        const bar   = document.getElementById(`upload-bar-${uid}`);
+        const pctEl = document.getElementById(`upload-pct-${uid}`);
+        const retry = document.getElementById(`upload-retry-${uid}`);
+        const item  = document.getElementById(`upload-item-${uid}`);
+        if (bar)   { bar.style.background = 'rgba(248,113,113,0.65)'; bar.classList.remove('upload-bar-active'); }
+        if (pctEl) { pctEl.textContent = ''; }
+        if (retry) retry.style.display = 'inline-flex';
+        if (item)  item.dataset.uploadFailed = '1';
+        if (item && errMsg) {
+            const el = document.createElement('div');
+            el.className = 'upload-float-item-err';
+            el.textContent = errMsg;
+            item.appendChild(el);
+        }
+    }
+
+    function _retryUpload(uid) {
+        const file = _uploadFileMap.get(uid);
+        if (!file) return;
+
+        const bar   = document.getElementById(`upload-bar-${uid}`);
+        const pctEl = document.getElementById(`upload-pct-${uid}`);
+        const retry = document.getElementById(`upload-retry-${uid}`);
+        const item  = document.getElementById(`upload-item-${uid}`);
+
+        // 清除舊的錯誤訊息與失敗標記
+        item?.querySelector('.upload-float-item-err')?.remove();
+        if (item) delete item.dataset.uploadFailed;
+
+        // 重置進度條
+        if (bar) { bar.style.width = '0%'; bar.style.background = '#b8c5d6'; bar.classList.add('upload-bar-active'); }
+        if (pctEl) { pctEl.textContent = '0%'; pctEl.style.color = '#b8c5d6'; }
+        if (retry) retry.style.display = 'none';
+
+        // 確保不在取消名單中
+        _cancelledUids.delete(uid);
+
+        // 重新排隊
+        _uploadQueue.push({ file, uid });
+        _drainUploadQueue();
+    }
+
+    async function _uploadSingleFile(file, uid) {
+        if (_cancelledUids.has(uid)) return;
+        const controller = new AbortController();
+        _uploadControllers.set(uid, controller);
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const res = await axios.post(`${API_URL}/api/admin/upload-incoming`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                signal: controller.signal,
+                onUploadProgress: (e) => {
+                    const pct = e.total ? Math.round((e.loaded / e.total) * 100) : 0;
+                    _setUploadProgress(uid, pct);
+                },
+            });
+            _setUploadDone(uid);
+            prependIncomingCard(res.data.filename, res.data.code);
+        } finally {
+            _uploadControllers.delete(uid);
+        }
+    }
+
+    async function _uploadOneSafe(file, uid) {
+        try {
+            await _uploadSingleFile(file, uid);
+        } catch (err) {
+            if (err.code !== 'ERR_CANCELED' && !axios.isCancel(err)) {
+                _setUploadError(uid, err.response?.data?.detail || t('err.uploadFail').replace(': ', ''));
+            }
+        }
+    }
+
+    // 持續從佇列中取出任務，保持最多 _UPLOAD_CONCURRENCY 個並發
+    // 第一次點擊：佇列空 → 立刻啟動最多 2 個 worker
+    // 第二次點擊（有上傳進行中）：只把檔案加入佇列，現有 worker 完成後自動取用
+    function _drainUploadQueue() {
+        while (_uploadActiveCount < _UPLOAD_CONCURRENCY && _uploadQueue.length > 0) {
+            const { file, uid } = _uploadQueue.shift();
+            _uploadActiveCount++;
+            _uploadOneSafe(file, uid).finally(() => {
+                _uploadActiveCount--;
+                _drainUploadQueue();
+                if (_uploadActiveCount === 0 && _uploadQueue.length === 0) {
+                    _scheduleUploadAutoClose();
+                }
+            });
+        }
+    }
+
+    function uploadIncomingPhotos(input) {
+        const files = Array.from(input.files);
+        input.value = '';
+        if (!files.length) return;
+
+        showUploadPanel();
+
+        // 將所有選取的檔案加入全域佇列（顯示進度列後立即可見）
+        files.forEach(file => {
+            const uid = Math.random().toString(36).slice(2, 9);
+            _addUploadItem(uid, file.name);
+            _uploadFileMap.set(uid, file);
+            _uploadQueue.push({ file, uid });
+        });
+
+        // 嘗試啟動 worker；若已有 2 個進行中則不做任何事，新項目會排隊等待
+        _drainUploadQueue();
     }
 
     // ═══════════════════════════════════════════════
@@ -1729,5 +2000,16 @@
         connectWebSocket();
     });
 </script>
+
+<!-- ── 上傳進度懸浮視窗 ──────────────────────── -->
+<div id="uploadFloatPanel" style="display:none;">
+    <div class="wa-card" style="border-radius:0.6rem; box-shadow:0 8px 30px rgba(0,0,0,0.15); overflow:visible;">
+        <div class="flex items-center justify-between px-4 py-2.5" style="border-bottom:1px solid var(--border);">
+            <span class="text-xs font-light" style="color:#b8c5d6;" data-i18n="photos.uploadPanel">上傳進度</span>
+            <button onclick="_onUploadPanelClose()" style="font-size:0.8rem; color:#b8c5d6; background:none; border:none; cursor:pointer; opacity:0.5; padding:0 2px; transition:opacity 0.15s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">✕</button>
+        </div>
+        <div id="uploadFloatList" style="padding:0.75rem 1rem; max-height:220px; overflow-y:auto;" class="space-y-2.5"></div>
+    </div>
+</div>
 </body>
 </html>

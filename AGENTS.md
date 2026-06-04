@@ -29,6 +29,13 @@ cd backend
 # 開發模式（自動重載 + 開放 API 文件）
 $env:ENABLE_API_DOCS="true"; $env:RELOAD_ADMIN_HTML="true"
 ..\python\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 生產部署（敏感 Token 透過環境變數注入，不落盤）
+$env:SECURE_COOKIES="true"
+$env:NGROK_AUTHTOKEN="your_ngrok_token"
+$env:LINE_CHANNEL_SECRET="your_line_secret"
+$env:LINE_CHANNEL_ACCESS_TOKEN="your_line_token"
+..\python\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 語法檢查（不執行應用，只做靜態分析）：
@@ -139,6 +146,16 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-03 | `_verify_password()` 改用 `hmac.compare_digest()` | 字串 `==` 比較是 short-circuit，長度或前段不同時提前返回，造成 timing side channel；`hmac.compare_digest` 保證恆定時間比較，消除此攻擊面（CWE-697）；即使 PBKDF2 計算時間已主導整體延遲，此變更代價為零，無理由不採用 |
 | 2026-06-03 | `delete_bg` / `delete_font` 改用 try-except 而非先 exists() 再 unlink() | 先檢查 exists() 再 unlink() 是 TOCTOU 競態（CWE-367）：另一請求可能在兩者之間刪除該檔案，使 unlink 拋出 `FileNotFoundError`；改為直接 unlink 並捕捉 `FileNotFoundError` 才是原子操作的正確寫法；`webp_path.unlink(missing_ok=True)` 同理消除伴生 WebP 的競態 |
 | 2026-06-03 | LINE API 呼叫設定 10 秒 timeout | `MessagingApi.reply_message` 若 LINE 伺服器無回應，預設無 timeout 會讓 worker 永久掛起；10 秒已足夠正常回應，逾時後由 SDK 拋出例外，不影響主事件迴圈（因為 `_handle_text` 不在 async context 中直接等待） |
+| 2026-06-04 | 管理員上傳照片用 timestamp 前綴命名 | 上傳檔名可能含中文/空格等不安全字元；以 `{timestamp_ms}_{sanitized_stem}{ext}` 產生安全檔名，並在碰撞時遞增 suffix；比完全隨機 UUID 更容易在磁碟上依時間排序、除錯 |
+| 2026-06-04 | `prependIncomingCard` 加冪等檢查 | 上傳端點廣播 WebSocket 後，Watchdog 在 0.5 秒後也會觸發相同廣播；若不檢查，同一張照片會被插入兩次；加上 `getElementById` 存在檢查，第二次廣播直接 return，不重複插卡 |
+| 2026-06-04 | 上傳進度用右下角懸浮視窗 + 全域佇列 2 線程並發 | 單次多檔選取後拆成獨立請求依序送出；`_drainUploadQueue` 以最多 2 個 async worker 消化全域 `_uploadQueue` 佇列；後端端點改為單檔（`UploadFile`）接收，讓每個請求都有獨立的 `onUploadProgress` 回調，進度條才能逐檔即時更新；懸浮面板（`#uploadFloatPanel`）固定在右下角，列出每張照片的個別進度條、完成打勾（綠）/ 失敗打叉（紅）；3 秒後所有項目完成則自動關閉，✕ 按鈕可手動關閉 |
+| 2026-06-04 | 上傳改用全域佇列；第二次點擊繼續排隊不另開 pool | **舊做法**：`uploadIncomingPhotos` 每次呼叫都 `_runUploadPool(tasks, 4)` 建立全新的 4-worker pool，第二次點擊時與第一批平行跑，互不等待。**新做法**：`_uploadQueue` 是全域陣列，所有批次共享；`uploadIncomingPhotos` 只做 push + 呼叫 `_drainUploadQueue()`；`_drainUploadQueue` 用 `_uploadActiveCount` 計數，已有 2 個進行中時直接 return，新項目靜靜排在佇列等待現有 worker 完成後自動提取；消除了多批次並行導致的連線數爆增，也讓第二次點擊的行為符合直覺（繼續排隊）|
+| 2026-06-04 | 上傳取消用 `AbortController` + `_cancelledUids` Set | X 按鈕呼叫 `_onUploadPanelClose()`；若有 `.upload-bar-active` 項目則出現 `confirm` 提示；確認後呼叫 `_cancelAllUploads()`：(1) `_uploadQueue.splice(0)` 清空等待佇列，(2) 查詢所有 `upload-bar-active` 元素，UIDs 加入 `_cancelledUids` 並視覺標記為灰色 `—`，(3) 中止 `_uploadControllers` 中所有 AbortController；`_uploadSingleFile` 在發出請求前先檢查 `_cancelledUids`，已取消則直接 return；axios abort 拋出 `ERR_CANCELED`，`_uploadOneSafe` 的 catch block 判斷後不呼叫 `_setUploadError`（避免覆蓋取消狀態） |
+| 2026-06-04 | `_cancelledUids.clear()` 必須在所有 worker 跑完後才能執行 | **Bug**：`closeUploadPanel()` 原本含 `_cancelledUids.clear()`，導致剛標記的取消 UIDs 立刻被清空；worker 再去檢查 `_cancelledUids.has(uid)` 時得到 false，排隊中的請求全部繼續發送。**Fix**：`_cancelledUids.clear()` 移至 `_scheduleUploadAutoClose()` 計時器回調內（`!upload-bar-active` 確認所有 worker 完全跑完後才清空），`closeUploadPanel()` 本身不再碰這個 Set |
+| 2026-06-04 | 有失敗項目時不自動關閉懸浮上傳面板 | **Bug**：`_scheduleUploadAutoClose()` 只檢查 `.upload-bar-active`（進行中），所有上傳結束後（無論成功或失敗）3 秒必然自動關閉，失敗項目在用戶來不及注意時就消失，導致漏傳照片。**Fix**：`_setUploadError` 在 item div 加上 `data-upload-failed="1"` 屬性；`_scheduleUploadAutoClose` 同時檢查 `[data-upload-failed]`，有任何未處理的失敗時不關閉；用戶按下重傳按鈕（`_retryUpload`）後移除該屬性；手動按 ✕ 仍可強制關閉 |
+| 2026-06-04 | 取件碼改用 `secrets.choice()` 而非 `random.choices()` | `random` 模組使用梅森旋轉演算法，不具密碼學安全性；攻擊者若能觀測足夠多的碼值，可還原內部狀態並預測後續碼；取件碼是照片存取的唯一憑證，必須用 Python 內建 `secrets.choice()` 確保 CSPRNG；`import random` 已移除，`import secrets` 已加入，`_generate_code()` 改為 `"".join(secrets.choice(_CODE_CHARS) for _ in range(length))` |
+| 2026-06-04 | LINE 設定新增環境變數優先序（`LINE_CHANNEL_SECRET` / `LINE_CHANNEL_ACCESS_TOKEN`） | ngrok token 已支援 `NGROK_AUTHTOKEN` env var 覆蓋，但 LINE 憑證只能存 JSON 明文；展場部署時 token 一旦落盤即在 `storage/` 下明文可見；`_load_line_config()` 改為先讀 `LINE_CHANNEL_SECRET` / `LINE_CHANNEL_ACCESS_TOKEN` 環境變數，有設定時直接回傳且不讀檔，fallback 至 JSON；與 ngrok 的設計模式對齊 |
+| 2026-06-04 | `_load_gallery_config()` 加 write-through 記憶體快取 | 公開 `/api/gallery` 是熱點端點（每次訪客進頁面或 Gallery 捲動觸發都呼叫），原始實作每次都做 JSON 磁碟讀取；加 `_gallery_config_cache` 模組級變數，`_load_gallery_config()` 命中快取則直接回傳 `dict(cache)`，miss 時讀磁碟並填充快取；`_save_gallery_config()` 寫入後同步更新快取（write-through），確保快取永遠與磁碟一致；`_invalidate_public_thumbs()` 不需額外清快取，因為總是在 `_save_gallery_config()` 之後呼叫 |
 
 ---
 
@@ -160,6 +177,10 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**在 `loadPhotoToCanvas` 移除 `?v={wm_version}` query — 這是唯一能繞過瀏覽器 24 小時快取使浮水印變更即時生效的機制
 - **不得**在 `_verify_password()` 將 `hmac.compare_digest()` 改回 `==` 字串比較 — `==` 有 short-circuit timing side channel（CWE-697），`hmac.compare_digest` 是正確的恆定時間比較方式
 - **不得**在 `delete_bg` / `delete_font` 中恢復先 `.exists()` 再 `.unlink()` 的模式 — 必須直接 `.unlink()` 並捕捉 `FileNotFoundError`，以消除 TOCTOU 競態（CWE-367）
+- **不得**在 `upload_incoming` 中直接使用原始 `file.filename` 作為儲存路徑 — 必須先用 `re.sub(r'[^\w\-]', '', stem)` 清除非安全字元，並以 timestamp 前綴確保唯一性，才能寫入 `INCOMING_DIR`
+- **不得**將 `upload_incoming` 端點改回接受 `List[UploadFile]` — 並發由前端 `_drainUploadQueue` 的全域佇列控制，單檔端點才能讓每個 HTTP 請求有獨立的 `onUploadProgress` 回調；多檔合批上傳會導致進度條只能顯示整批進度
+- **不得**將 `_generate_code()` 改回使用 `random.choices()` — `random` 為偽亂數，攻擊者可從足夠樣本推算後續碼值；必須使用 `secrets.choice()` 確保密碼學安全性（CSPRNG）
+- **不得**在 `_load_gallery_config()` 移除快取機制 — 此函數是公開 `/api/gallery` 熱點路徑，快取消除了每次請求的磁碟 I/O；修改 gallery 設定時必須透過 `_save_gallery_config()` 寫入以同步更新快取，不可繞過直接寫檔
 
 ---
 

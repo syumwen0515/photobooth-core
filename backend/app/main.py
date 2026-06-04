@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 import sys
-import random
+import secrets
 import logging
 import math
 import time
@@ -36,7 +36,7 @@ from app.config import (
     CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, CORS_ALLOW_METHODS, CORS_ALLOW_HEADERS,
     MAX_FILE_SIZE_BYTES, SUPPORTED_IMAGE_FORMATS,
     STATIC_INCOMING_ROUTE, STATIC_BG_ROUTE, STATIC_FONTS_ROUTE,
-    API_ADMIN_PREFIX, WS_PHOTO_ROUTE,
+    API_ADMIN_PREFIX, WS_PHOTO_ROUTE, WS_MESSAGE_TYPE_NEW_INCOMING,
     LOG_LEVEL, LOG_FORMAT,
     SESSION_COOKIE_NAME,
     LINE_CONFIG_FILE, PHOTO_CODES_FILE, PUBLIC_BASE_URL,
@@ -83,7 +83,7 @@ _CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
 def _generate_code(length: int = 6) -> str:
-    return "".join(random.choices(_CODE_CHARS, k=length))
+    return "".join(secrets.choice(_CODE_CHARS) for _ in range(length))
 
 
 # ── 取件碼儲存（filename → code）────────────────────────────
@@ -166,6 +166,11 @@ def _save_ngrok_token(auth_token: str) -> None:
 
 # ── LINE BOT 設定儲存 ────────────────────────────────────────
 def _load_line_config() -> Optional[Dict[str, str]]:
+    # 環境變數優先序高於 JSON 檔案（適合生產部署，避免 token 明文落盤）
+    env_secret = os.getenv("LINE_CHANNEL_SECRET", "").strip()
+    env_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+    if env_secret and env_token:
+        return {"channel_secret": env_secret, "channel_access_token": env_token}
     if LINE_CONFIG_FILE.exists():
         try:
             cfg = json.loads(LINE_CONFIG_FILE.read_text(encoding="utf-8"))
@@ -197,18 +202,28 @@ def _save_fonts_meta(fonts: List[Dict]) -> None:
     FONTS_META_FILE.write_text(json.dumps(fonts, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+_gallery_config_cache: Optional[Dict[str, Any]] = None
+
+
 def _load_gallery_config() -> Dict[str, Any]:
+    global _gallery_config_cache
+    if _gallery_config_cache is not None:
+        return dict(_gallery_config_cache)
     if GALLERY_CONFIG_FILE.exists():
         try:
             saved = json.loads(GALLERY_CONFIG_FILE.read_text(encoding="utf-8"))
-            return {**GALLERY_CONFIG_DEFAULTS, **{k: v for k, v in saved.items() if k in GALLERY_CONFIG_DEFAULTS}}
+            _gallery_config_cache = {**GALLERY_CONFIG_DEFAULTS, **{k: v for k, v in saved.items() if k in GALLERY_CONFIG_DEFAULTS}}
+            return dict(_gallery_config_cache)
         except Exception:
             pass
-    return dict(GALLERY_CONFIG_DEFAULTS)
+    _gallery_config_cache = dict(GALLERY_CONFIG_DEFAULTS)
+    return dict(_gallery_config_cache)
 
 
 def _save_gallery_config(data: Dict[str, Any]) -> None:
+    global _gallery_config_cache
     GALLERY_CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    _gallery_config_cache = dict(data)
 
 
 def _invalidate_public_thumbs() -> None:
@@ -973,6 +988,45 @@ async def clear_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Di
     if deleted:
         _save_photo_codes()
     return {"deleted": deleted, "errors": errors, "count": len(deleted)}
+
+
+@app.post(f"{API_ADMIN_PREFIX}/upload-incoming", tags=["Incoming"])
+async def upload_incoming(
+    file: UploadFile = File(...),
+    pb_session: Optional[str] = Cookie(default=None),
+) -> Dict[str, Any]:
+    _require_auth(pb_session)
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="檔案名稱為空")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in SUPPORTED_IMAGE_FORMATS:
+        raise HTTPException(status_code=400, detail=f"不支援的格式（{ext}）")
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="檔案超過 50MB 限制")
+    raw_stem = re.sub(r'[^\w\-]', '', Path(file.filename).stem)[:32] or 'photo'
+    ts = int(time.time() * 1000)
+    safe_name = f"{ts}_{raw_stem}{ext}"
+    dest = INCOMING_DIR / safe_name
+    suffix = 0
+    while dest.exists():
+        suffix += 1
+        safe_name = f"{ts}_{raw_stem}_{suffix}{ext}"
+        dest = INCOMING_DIR / safe_name
+    try:
+        dest.write_bytes(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"儲存失敗: {e}")
+    code = _assign_code(safe_name)
+    await manager.broadcast({
+        "type": WS_MESSAGE_TYPE_NEW_INCOMING,
+        "filename": safe_name,
+        "url": f"{STATIC_INCOMING_ROUTE}/{safe_name}",
+        "code": code,
+        "timestamp": time.time(),
+    })
+    logger.info(f"✓ 管理員上傳照片: {safe_name} → {code}")
+    return {"filename": safe_name, "code": code}
 
 
 @app.post(f"{API_ADMIN_PREFIX}/open-incoming-folder", tags=["Incoming"])
