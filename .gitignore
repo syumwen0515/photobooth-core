@@ -7,15 +7,13 @@ __pycache__/
 *.pyo
 *.pyd
 
-# 使用者資料（不進版控）
-backend/storage/incoming/
-backend/storage/final/
-backend/storage/bg/
-backend/storage/accounts.json
-backend/storage/photo_codes.json
-backend/storage/line_config.json
-backend/storage/ngrok_config.json
-backend/
+# 使用者資料與執行期設定（不進版控）
+backend/storage/
+
+# 環境變數設定檔
+.env
+.env.local
+*.env
 
 # 虛擬環境（如果用 venv 開發）
 .venv/
