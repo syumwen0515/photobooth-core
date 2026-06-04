@@ -895,13 +895,16 @@ async def list_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Dic
         raise HTTPException(status_code=500, detail=f"無法取得照片列表: {e}")
 
 
-def _generate_thumbnail(src_path: Path, thumb_path: Path) -> None:
+def _generate_thumbnail(src_path: Path, thumb_path: Path, fmt: str = "WEBP") -> None:
     img = ImageOps.exif_transpose(
         Image.open(io.BytesIO(src_path.read_bytes()))
     ).convert("RGB")
     img.thumbnail((480, 480), Image.LANCZOS)
     buf = io.BytesIO()
-    img.save(buf, "WEBP", quality=72, method=4)
+    if fmt == "JPEG":
+        img.save(buf, "JPEG", quality=82, optimize=True)
+    else:
+        img.save(buf, "WEBP", quality=72, method=4)
     thumb_path.write_bytes(buf.getvalue())
 
 
@@ -1016,9 +1019,12 @@ async def delete_incoming(filename: str, pb_session: Optional[str] = Cookie(defa
     except ValueError:
         raise HTTPException(status_code=400, detail="檔案路徑驗證失敗")
     file_path.unlink()
-    thumb_path = THUMB_DIR / f"{filename}.thumb.webp"
-    if thumb_path.exists():
-        thumb_path.unlink()
+    for thumb_path in [
+        THUMB_DIR / f"{filename}.thumb.webp",
+        THUMB_DIR / f"{filename}.thumb.jpg",
+    ]:
+        if thumb_path.exists():
+            thumb_path.unlink()
     pub_thumb = _pub_thumb_path(filename)
     if pub_thumb.exists():
         pub_thumb.unlink()
@@ -1038,9 +1044,12 @@ async def clear_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Di
             try:
                 p.unlink()
                 deleted.append(p.name)
-                thumb_path = THUMB_DIR / f"{p.name}.thumb.webp"
-                if thumb_path.exists():
-                    thumb_path.unlink()
+                for thumb_path in [
+                    THUMB_DIR / f"{p.name}.thumb.webp",
+                    THUMB_DIR / f"{p.name}.thumb.jpg",
+                ]:
+                    if thumb_path.exists():
+                        thumb_path.unlink()
                 pub_thumb = _pub_thumb_path(p.name)
                 if pub_thumb.exists():
                     pub_thumb.unlink()
@@ -1232,7 +1241,7 @@ async def serve_photo(code: str, request: Request, dl: int = 0) -> FileResponse:
 
 @app.get("/api/photo/{code}/thumb", tags=["Photo Pickup"])
 async def serve_photo_thumb(code: str, request: Request) -> FileResponse:
-    """取件預覽縮圖（480px WebP，無浮水印）：供 download.html Canvas 載入，避免傳輸全尺寸原圖。"""
+    """取件預覽縮圖（480px，無浮水印）：依 Accept header 回傳 WebP 或 JPEG，相容 iOS 13 等不支援 WebP 的瀏覽器。"""
     if not _check_code_rate_limit(_get_client_ip(request)):
         raise HTTPException(status_code=429, detail="請求過於頻繁，請稍後再試")
     code = code.strip().upper()
@@ -1246,17 +1255,27 @@ async def serve_photo_thumb(code: str, request: Request) -> FileResponse:
         src_path.resolve().relative_to(INCOMING_DIR.resolve())
     except ValueError:
         raise HTTPException(status_code=400, detail="路徑驗證失敗")
-    thumb_path = THUMB_DIR / f"{filename}.thumb.webp"
+
+    accept = request.headers.get("accept", "")
+    if "image/webp" in accept:
+        thumb_path = THUMB_DIR / f"{filename}.thumb.webp"
+        media_type = "image/webp"
+        fmt = "WEBP"
+    else:
+        thumb_path = THUMB_DIR / f"{filename}.thumb.jpg"
+        media_type = "image/jpeg"
+        fmt = "JPEG"
+
     if not thumb_path.exists():
         try:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, _generate_thumbnail, src_path, thumb_path)
+            await loop.run_in_executor(None, _generate_thumbnail, src_path, thumb_path, fmt)
         except Exception as e:
             logger.error(f"取件縮圖生成失敗 {filename}: {e}")
             raise HTTPException(status_code=500, detail="縮圖生成失敗")
     return FileResponse(
         str(thumb_path),
-        media_type="image/webp",
+        media_type=media_type,
         headers={"Cache-Control": "private, max-age=86400"},
     )
 
