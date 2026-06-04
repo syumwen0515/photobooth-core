@@ -77,7 +77,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 帳號管理（新增 / 刪除 / 改密碼，密碼最短 8 字元；改密碼使用頁內 Modal + 密碼遮罩 + 確認欄位，不使用明碼 `prompt()`）
 - [x] 首頁底圖上傳 / 刪除（自動輸出 JPEG + WebP 雙格式）
 - [x] 首頁文字客製化（主標題 / 副標題 / 中段文字 / 字體）
-- [x] 自訂字型上傳（TTF / OTF / WOFF / WOFF2，最大 20 MB，可在字體選單選用）
+- [x] 自訂字型上傳（TTF / OTF / WOFF / WOFF2，最大 20 MB，**支援多選批次上傳**，可在字體選單選用）
 - [x] 相機照片自動監聽（Watchdog）
 - [x] WebSocket 即時推播到管理後台（連線管理使用 set，斷線移除 O(1)）
 - [x] 取件碼自動指派（6 碼，去除易混淆字元 0/O/1/I）
@@ -161,7 +161,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 方法 | 端點 | 說明 |
 |------|------|------|
 | GET | `/api/fonts` | 取得已上傳字型列表（公開）|
-| POST | `/api/admin/fonts` | 上傳字型（TTF / OTF / WOFF / WOFF2，最大 20 MB）|
+| POST | `/api/admin/fonts` | 上傳字型（TTF / OTF / WOFF / WOFF2，最大 20 MB，支援多檔批次上傳）|
 | DELETE | `/api/admin/fonts/{filename}` | 刪除字型 |
 
 ### 拍攝照片（incoming）

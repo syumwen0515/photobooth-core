@@ -449,11 +449,11 @@
                         <div class="flex items-center gap-3 flex-wrap pt-1">
                             <label id="fontUploadLabel" class="cursor-pointer btn-primary" data-i18n="fonts.upload">
                                 上傳字型
-                                <input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" class="hidden" onchange="uploadFont(this)">
+                                <input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" multiple class="hidden" onchange="uploadFont(this)">
                             </label>
                             <span id="fontUploadMsg" class="text-xs font-light text-wa-blue hidden"></span>
                         </div>
-                        <p class="text-xs text-wa-blue/60 font-light" data-i18n="fonts.hint">支援 TTF / OTF / WOFF / WOFF2，上傳後可在「首頁文字」字體選單中選用。</p>
+                        <p class="text-xs text-wa-blue/60 font-light" data-i18n="fonts.hint">支援 TTF / OTF / WOFF / WOFF2，可一次選取多個檔案；上傳後可在「首頁文字」字體選單中選用。</p>
                     </div>
                 </div>
             </div>
@@ -834,7 +834,7 @@
             'fonts.title':         '自訂字型',
             'fonts.desc':          '上傳本地字型檔案',
             'fonts.upload':        '上傳字型',
-            'fonts.hint':          '支援 TTF / OTF / WOFF / WOFF2，上傳後可在「首頁文字」字體選單中選用。',
+            'fonts.hint':          '支援 TTF / OTF / WOFF / WOFF2，可一次選取多個檔案；上傳後可在「首頁文字」字體選單中選用。',
             'fonts.empty':         '尚未上傳字型',
             'idxtext.title':       '首頁文字',
             'idxtext.desc':        '主標題、副標題與字體',
@@ -955,7 +955,7 @@
             'fonts.title':         'Custom Fonts',
             'fonts.desc':          'Upload local font files',
             'fonts.upload':        'Upload Font',
-            'fonts.hint':          'Supports TTF / OTF / WOFF / WOFF2. Uploaded fonts appear in the font selector.',
+            'fonts.hint':          'Supports TTF / OTF / WOFF / WOFF2. Multiple files can be selected at once. Uploaded fonts appear in the font selector.',
             'fonts.empty':         'No fonts uploaded',
             'idxtext.title':       'Homepage Text',
             'idxtext.desc':        'Title, subtitle & font',
@@ -1870,22 +1870,30 @@
     }
 
     async function uploadFont(input) {
-        const file = input.files[0];
-        if (!file) return;
+        const files = Array.from(input.files);
+        if (!files.length) return;
         const label  = document.getElementById('fontUploadLabel');
         const msg    = document.getElementById('fontUploadMsg');
         const formData = new FormData();
-        formData.append('file', file);
+        files.forEach(f => formData.append('files', f));
         label.style.pointerEvents = 'none';
         label.style.opacity = '0.6';
         try {
-            await axios.post(`${API_URL}/api/admin/fonts`, formData, {
+            const res = await axios.post(`${API_URL}/api/admin/fonts`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             await loadCustomFonts();
-            msg.textContent = t('msg.uploaded');
+            const n = res.data.uploaded?.length ?? 0;
+            const isEn = (localStorage.getItem('pb-lang') || 'zh-TW') === 'en';
+            msg.textContent = isEn
+                ? `✓ ${n} font${n !== 1 ? 's' : ''} uploaded`
+                : `✓ 已上傳 ${n} 個字型`;
             msg.classList.remove('hidden');
             setTimeout(() => msg.classList.add('hidden'), 3000);
+            if (res.data.errors?.length) {
+                const errList = res.data.errors.map(e => `${e.filename}: ${e.error}`).join('\n');
+                alert((isEn ? 'Some fonts failed:\n' : '部分字型上傳失敗：\n') + errList);
+            }
         } catch (err) {
             alert(t('err.uploadFail') + (err.response?.data?.detail || ''));
         } finally {

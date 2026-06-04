@@ -769,27 +769,40 @@ async def list_fonts_public() -> Dict[str, Any]:
 
 
 @app.post(f"{API_ADMIN_PREFIX}/fonts", tags=["Fonts"])
-async def upload_font(file: UploadFile = File(...), pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, str]:
+async def upload_font(files: List[UploadFile] = File(...), pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
     _require_auth(pb_session)
-    if not file.filename:
+    if not files:
         raise HTTPException(status_code=400, detail="請選擇字型檔案")
-    ext = Path(file.filename).suffix.lower()
-    if ext not in SUPPORTED_FONT_EXTS:
-        raise HTTPException(status_code=400, detail="僅支援 TTF / OTF / WOFF / WOFF2 格式")
-    content = await file.read()
-    if len(content) > MAX_FONT_SIZE_BYTES:
-        raise HTTPException(status_code=413, detail="字型檔案超過 20MB 限制")
 
-    raw_stem = Path(file.filename).stem
-    safe_family = re.sub(r"[^\w\s\-]", "", raw_stem).strip() or "CustomFont"
-    safe_filename = safe_family + ext
-    (FONTS_DIR / safe_filename).write_bytes(content)
+    uploaded: List[Dict[str, str]] = []
+    errors: List[Dict[str, str]] = []
+    fonts = _load_fonts_meta()
 
-    fonts = [f for f in _load_fonts_meta() if f["filename"] != safe_filename]
-    fonts.append({"family": safe_family, "filename": safe_filename, "format": SUPPORTED_FONT_EXTS[ext]})
-    _save_fonts_meta(fonts)
-    logger.info(f"✓ 自訂字型已上傳: {safe_filename}")
-    return {"message": "字型上傳成功", "family": safe_family, "filename": safe_filename}
+    for file in files:
+        if not file.filename:
+            errors.append({"filename": "", "error": "空白檔名"})
+            continue
+        ext = Path(file.filename).suffix.lower()
+        if ext not in SUPPORTED_FONT_EXTS:
+            errors.append({"filename": file.filename, "error": "僅支援 TTF / OTF / WOFF / WOFF2 格式"})
+            continue
+        content = await file.read()
+        if len(content) > MAX_FONT_SIZE_BYTES:
+            errors.append({"filename": file.filename, "error": "字型檔案超過 20MB 限制"})
+            continue
+        raw_stem = Path(file.filename).stem
+        safe_family = re.sub(r"[^\w\s\-]", "", raw_stem).strip() or "CustomFont"
+        safe_filename = safe_family + ext
+        (FONTS_DIR / safe_filename).write_bytes(content)
+        fonts = [f for f in fonts if f["filename"] != safe_filename]
+        fonts.append({"family": safe_family, "filename": safe_filename, "format": SUPPORTED_FONT_EXTS[ext]})
+        uploaded.append({"family": safe_family, "filename": safe_filename})
+        logger.info(f"✓ 自訂字型已上傳: {safe_filename}")
+
+    if uploaded:
+        _save_fonts_meta(fonts)
+
+    return {"message": f"上傳完成 ({len(uploaded)}/{len(files)})", "uploaded": uploaded, "errors": errors}
 
 
 @app.delete(f"{API_ADMIN_PREFIX}/fonts/{{filename}}", tags=["Fonts"])
