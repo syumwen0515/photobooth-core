@@ -376,9 +376,10 @@
             var ext  = extMap[blob.type] || 'jpg';
             var filename = 'photo_{code}.' + ext;
 
-            /* Web Share API — on iOS 15+ / Android 86+ lets the user save directly to Photos */
+            /* Web Share API — mobile only (pointer: coarse); desktop goes straight to blob download */
             var shared = false;
-            if (navigator.canShare) {
+            var isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+            if (isTouchDevice && navigator.canShare) {
                 var file = new File([blob], filename, { type: blob.type });
                 if (navigator.canShare({ files: [file] })) {
                     resetProgress(600);
