@@ -218,10 +218,9 @@
         <div style="width:36px; height:1px; background:rgba(184,197,214,0.45);"></div>
     </div>
 
-    <!-- Photo -->
+    <!-- Photo (src set by JS so fetch can add ngrok-skip-browser-warning header) -->
     <div id="photo-wrap" class="photo-wrap anim d2">
         <img id="photo-img"
-             src="/api/photo/{code}/thumb"
              class="photo-img"
              data-i18n-alt="dl.photoAlt"
              alt="您的照片"
@@ -295,10 +294,38 @@
     }
     applyLang(_lang);
 
-    /* ── Photo error handler ── */
-    document.getElementById('photo-img').addEventListener('error', function () {
-        document.getElementById('photo-error').style.display = 'flex';
-    });
+    /* ── Load preview image via fetch (adds ngrok-skip-browser-warning to bypass ngrok interstitial) ── */
+    (function () {
+        var img   = document.getElementById('photo-img');
+        var errEl = document.getElementById('photo-error');
+
+        /* Detect WebP support to request the right format from the server */
+        var _supportsWebP = document.createElement('canvas')
+            .toDataURL('image/webp').startsWith('data:image/webp');
+        var _accept = _supportsWebP
+            ? 'image/webp,image/jpeg,image/*'
+            : 'image/jpeg,image/*';
+
+        fetch('/api/photo/{code}/thumb', {
+            headers: {
+                'Accept': _accept,
+                'ngrok-skip-browser-warning': '1',
+            }
+        })
+        .then(function (r) {
+            if (!r.ok) throw new Error('status ' + r.status);
+            var ct = r.headers.get('content-type') || '';
+            if (!ct.startsWith('image/')) throw new Error('unexpected content-type: ' + ct);
+            return r.blob();
+        })
+        .then(function (blob) {
+            var url = URL.createObjectURL(blob);
+            img.onload  = function () { URL.revokeObjectURL(url); };
+            img.onerror = function () { URL.revokeObjectURL(url); errEl.style.display = 'flex'; };
+            img.src = url;
+        })
+        .catch(function () { errEl.style.display = 'flex'; });
+    })();
 
     /* ── Anti-save protections ── */
     document.addEventListener('contextmenu', function (e) {
@@ -320,7 +347,7 @@
     }
 
     async function _fetchWithProgress(url, onProgress) {
-        var resp = await fetch(url);
+        var resp = await fetch(url, { headers: { 'ngrok-skip-browser-warning': '1' } });
         if (!resp.ok) throw new Error('fetch failed');
         var contentType = resp.headers.get('Content-Type') || 'image/jpeg';
         var contentLength = resp.headers.get('Content-Length');
