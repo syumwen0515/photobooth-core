@@ -47,6 +47,7 @@ from app.config import (
     GOOGLE_FONTS, SUPPORTED_FONT_EXTS, MAX_FONT_SIZE_BYTES,
     SECURE_COOKIES, ENABLE_API_DOCS,
     GALLERY_CONFIG_FILE, GALLERY_CONFIG_DEFAULTS,
+    LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW, TRUSTED_PROXY_IPS,
 )
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
@@ -58,12 +59,29 @@ _code_request_log: Dict[str, List[float]] = defaultdict(list)
 _CODE_RATE_LIMIT = 30   # 每個 IP 每分鐘最多 30 次
 _CODE_RATE_WINDOW = 60  # 秒
 
+# ── IP 速率限制（防止分散式暴力破解登入）────────────────────────
+_login_request_log: Dict[str, List[float]] = defaultdict(list)
+
 
 def _get_client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    # 只有當 TCP 連線來自已設定的可信代理 IP 時，才信任 X-Forwarded-For
+    # 未設定 TRUSTED_PROXY_IPS 時（預設），直接使用 TCP 遠端位址，防止 header 偽造
+    client_host = request.client.host if request.client else ""
+    if TRUSTED_PROXY_IPS and client_host in TRUSTED_PROXY_IPS:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return client_host or "unknown"
+
+
+def _check_login_rate_limit(ip: str) -> bool:
+    now = time.monotonic()
+    cutoff = now - LOGIN_RATE_WINDOW
+    _login_request_log[ip] = [t for t in _login_request_log[ip] if t > cutoff]
+    if len(_login_request_log[ip]) >= LOGIN_RATE_LIMIT:
+        return False
+    _login_request_log[ip].append(now)
+    return True
 
 
 def _check_code_rate_limit(ip: str) -> bool:
@@ -335,7 +353,13 @@ async def _session_cleanup_task() -> None:
         for ip in stale_ips:
             del _code_request_log[ip]
         if stale_ips:
-            logger.debug(f"✓ 已清理 {len(stale_ips)} 個過期 IP 速率限制記錄")
+            logger.debug(f"✓ 已清理 {len(stale_ips)} 個過期 IP 速率限制記錄（取件碼）")
+        login_cutoff = now - LOGIN_RATE_WINDOW
+        stale_login_ips = [ip for ip, log in _login_request_log.items() if not any(t > login_cutoff for t in log)]
+        for ip in stale_login_ips:
+            del _login_request_log[ip]
+        if stale_login_ips:
+            logger.debug(f"✓ 已清理 {len(stale_login_ips)} 個過期 IP 速率限制記錄（登入）")
 
 
 @asynccontextmanager
@@ -379,6 +403,24 @@ app.add_middleware(
     allow_methods=CORS_ALLOW_METHODS,
     allow_headers=CORS_ALLOW_HEADERS,
 )
+
+
+@app.middleware("http")
+async def protect_static_incoming(request: Request, call_next):
+    """封鎖未授權的原始照片直接存取（繞過取件碼機制的後門）。
+    公開縮圖（含浮水印）走 /api/gallery/thumb/；原始檔必須通過 /api/photo/{code} 或管理員 session。
+    此 middleware 後定義，執行順序優先於 add_security_headers。
+    """
+    if request.url.path.startswith(STATIC_INCOMING_ROUTE + "/"):
+        pb_session = request.cookies.get(SESSION_COOKIE_NAME)
+        if not auth.validate_session(pb_session):
+            return Response(
+                status_code=401,
+                content="需要管理員登入才能直接存取原始照片。請透過取件碼頁面 /download/{code} 取件。",
+                media_type="text/plain; charset=utf-8",
+                headers={"X-Content-Type-Options": "nosniff"},
+            )
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -540,12 +582,15 @@ async def get_ngrok_url_public() -> Dict[str, Any]:
 # ==================== Auth API ====================
 
 @app.post("/api/auth/login", tags=["Auth"], summary="管理員登入")
-async def login(request: LoginRequest, response: Response) -> Dict[str, str]:
-    if auth.is_account_locked(request.username):
+async def login(body: LoginRequest, http_request: Request, response: Response) -> Dict[str, str]:
+    client_ip = _get_client_ip(http_request)
+    if not _check_login_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="登入嘗試次數過多，請稍後再試")
-    if not auth.verify_credentials(request.username, request.password):
+    if auth.is_account_locked(body.username):
+        raise HTTPException(status_code=429, detail="登入嘗試次數過多，請稍後再試")
+    if not auth.verify_credentials(body.username, body.password):
         raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
-    token = auth.create_session(request.username)
+    token = auth.create_session(body.username)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
@@ -554,7 +599,7 @@ async def login(request: LoginRequest, response: Response) -> Dict[str, str]:
         samesite="lax",
         max_age=7 * 24 * 3600,
     )
-    return {"message": "登入成功", "username": request.username}
+    return {"message": "登入成功", "username": body.username}
 
 
 @app.post("/api/auth/logout", tags=["Auth"], summary="管理員登出")
@@ -1045,8 +1090,9 @@ async def upload_incoming(
 @app.post(f"{API_ADMIN_PREFIX}/open-incoming-folder", tags=["Incoming"])
 async def open_incoming_folder(request: Request, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
     _require_auth(pb_session)
-    host = request.headers.get("host", "").split(":")[0]
-    if host not in ("localhost", "127.0.0.1", "::1"):
+    # 使用 TCP 連線來源 IP（不信任可被偽造的 Host header），防止 ngrok 環境下的 Host 偽造
+    client_host = request.client.host if request.client else ""
+    if client_host not in ("127.0.0.1", "::1"):
         raise HTTPException(status_code=403, detail="此功能僅限本機存取")
     folder = INCOMING_DIR.resolve()
     try:

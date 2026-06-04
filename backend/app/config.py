@@ -8,7 +8,7 @@ from pathlib import Path
 
 # 應用程式設定
 APP_TITLE = "智能拍貼機邊緣端系統"
-APP_VERSION = "0.4.7"
+APP_VERSION = "0.4.8"
 APP_DESCRIPTION = "支援 WebSocket 即時預覽、取件碼系統、LINE BOT 整合的展場級拍貼系統"
 
 # 目錄路徑配置
@@ -110,6 +110,15 @@ MAX_FONT_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 SECURE_COOKIES: bool = os.getenv("SECURE_COOKIES", "false").lower() == "true"
 # 設 ENABLE_API_DOCS=true 才開放 /api/docs、/api/openapi.json（預設關閉）
 ENABLE_API_DOCS: bool = os.getenv("ENABLE_API_DOCS", "false").lower() == "true"
+
+# 登入速率限制（IP 維度，防止分散式暴力破解）
+LOGIN_RATE_LIMIT: int = int(os.getenv("LOGIN_RATE_LIMIT", "10"))   # 每個 IP 每分鐘最多 N 次
+LOGIN_RATE_WINDOW: int = 60  # 秒
+
+# 可信任的反向代理 IP（逗號分隔；設定後才信任 X-Forwarded-For；空白＝不信任任何代理）
+# 範例：TRUSTED_PROXY_IPS=127.0.0.1,::1
+_trusted_proxy_env = os.getenv("TRUSTED_PROXY_IPS", "")
+TRUSTED_PROXY_IPS: set = {ip.strip() for ip in _trusted_proxy_env.split(",") if ip.strip()}
 
 for directory in [BG_DIR, THUMB_DIR, FONTS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)

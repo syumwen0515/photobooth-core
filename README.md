@@ -226,6 +226,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | `LINE_CHANNEL_ACCESS_TOKEN` | — | LINE Channel Access Token（同上，兩個都設定才生效）|
 | `LOG_LEVEL` | `INFO` | 日誌等級：`DEBUG` / `INFO` / `WARNING` / `ERROR` |
 | `RELOAD_ADMIN_HTML` | `false` | 設為 `true` 停用 HTML 快取（開發用）|
+| `LOGIN_RATE_LIMIT` | `10` | 每個 IP 每分鐘最多幾次登入嘗試（可調高，建議不低於 5）|
+| `TRUSTED_PROXY_IPS` | 空（不信任） | 逗號分隔的可信代理 IP，設定後才信任 `X-Forwarded-For`；例如 `127.0.0.1,::1`（放在 nginx 後方時使用）|
 
 > **安全建議**：生產展場部署時，建議透過環境變數注入所有敏感 Token（`NGROK_AUTHTOKEN`、`LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN`），避免憑證以明文形式落盤於 `storage/` 目錄。
 
@@ -235,18 +237,21 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 |------|------|
 | 密碼雜湊 | **PBKDF2-HMAC-SHA256**（260,000 rounds + 隨機 salt）；舊 SHA-256 帳號於下次登入時自動靜默升級；雜湊比較使用 `hmac.compare_digest()`（恆定時間，消除 timing side channel）|
 | Session Cookie | `pb_session`（HttpOnly、SameSite=Lax、7 天 TTL；`SECURE_COOKIES=true` 時加上 Secure flag）|
-| Session 清理 | 服務啟動後每小時自動清理過期 session，防止記憶體無限成長 |
-| 登入保護 | 同一帳號 10 分鐘內失敗 5 次 → 鎖定 10 分鐘 |
-| 速率限制 | 取件碼端點（`/download/{code}`、`/api/photo/{code}`）每個 IP 每分鐘最多 30 次，超過回傳 429 |
+| Session 清理 | 服務啟動後每小時自動清理過期 session 與速率限制記錄，防止記憶體無限成長 |
+| 帳號鎖定 | 同一帳號 10 分鐘內失敗 5 次 → 鎖定 10 分鐘（防止單一帳號枚舉）|
+| 登入 IP 速率限制 | 每個 IP 每分鐘最多 10 次登入嘗試（`LOGIN_RATE_LIMIT`，可透過環境變數調整）；阻擋分散式帳號噴灑攻擊 |
+| 取件碼速率限制 | 取件碼端點（`/download/{code}`、`/api/photo/{code}`）每個 IP 每分鐘最多 30 次，超過回傳 429 |
+| 原始照片存取保護 | `/static/incoming/` 目錄受 middleware 保護，需有效管理員 session 才能存取原始高解析度照片；公開訪客只能透過 `/api/photo/{code}`（需取件碼）或 `/api/gallery/thumb/{filename}`（含浮水印縮圖）存取 |
+| X-Forwarded-For 防偽 | 僅在連線來源 IP 屬於 `TRUSTED_PROXY_IPS`（環境變數）時才信任 `X-Forwarded-For` 標頭；預設不信任，防止攻擊者偽造 IP 規避速率限制 |
 | WebSocket 認證 | `/ws/photos` 連線時驗證 Session Cookie，未登入者返回 1008 Policy Violation |
 | API 文件 | 預設關閉；需明確設定 `ENABLE_API_DOCS=true` 才開放 |
 | 路徑驗證 | 所有檔案操作透過 `validate_filename_safety` + `Path.resolve().relative_to()` 雙重防護 |
 | XSS 防護 | 前端照片卡片 filename 以 HTML escape + `data-*` 屬性 + 事件委派處理，不使用 inline `onclick` |
 | 密碼輸入遮罩 | 改密碼透過頁內 Modal（`type="password"` 欄位）完成，不使用原生 `prompt()`（明碼顯示）|
 | 安全標頭 | `X-Content-Type-Options`、`X-Frame-Options: DENY`、`Referrer-Policy`、`Permissions-Policy`；HTTPS 環境下另加 `Strict-Transport-Security` |
-| Content-Security-Policy | `default-src 'self'`；`script-src` 白名單 jsdelivr / tailwind CDN；`style-src` 白名單 Google Fonts；`font-src` 白名單 fonts.gstatic.com；`img-src` 允許 `data:` / `blob:`；`connect-src 'self'`；`form-action 'self'`；`frame-ancestors 'none'`；`object-src 'none'`；`base-uri 'self'` |
+| Content-Security-Policy | `default-src 'self'`；`script-src` 白名單 jsdelivr / tailwind CDN；`style-src` 白名單 Google Fonts；`font-src` 白名單 fonts.gstatic.com；`img-src` 允許 `data:` / `blob:`；`connect-src 'self'`；`form-action 'self'`；`frame-ancestors 'none'`；`object-src 'none'`；`base-uri 'self'`<br>⚠️ **已知技術債**：`'unsafe-inline'` 仍存在於 `script-src`（因 admin.html 大量 inline script）；完整移除需將 inline script 全部抽出為外部 .js 檔並改用 CSP nonce |
 | Subresource Integrity | `login.html` / `admin.html` 的 Axios CDN 標籤加上 `integrity="sha384-..."` + 版本固定為 `axios@1.16.1`，瀏覽器驗證 hash 失敗時拒絕執行，防止 CDN 供應鏈攻擊 |
-| 本機限定功能 | `open-incoming-folder` 端點檢查 Host header，非 localhost 回傳 403 |
+| 本機限定功能 | `open-incoming-folder` 端點驗證 TCP 連線來源 IP（非 `Host` header，防止 ngrok 環境下的 Host 偽造），非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
 | 公開照片防下載 | Canvas 渲染（不暴露 img src）+ blob URL 使用後立即撤銷 + 右鍵/拖曳/Ctrl+S 攔截；即使 DevTools Network tab 取得的也只是含浮水印的 480px 縮圖 |
 | 縮圖快取命名 | 公開縮圖以 `MD5(filename)` 命名（`pub_<hash>.webp`），避免中文/特殊字元檔名在 Windows 路徑比對不一致；Pillow 讀圖改用 BytesIO，避免 Unicode path 相容問題 |
@@ -271,7 +276,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.4.7 | **更新**: 2026-06-04（修正：ngrok 重置/驗證/快取清理；Gallery 設定重置漏洞；重置後 Gallery UI 不同步）| **狀態**: 生產就緒
+**版本**: 0.4.8 | **更新**: 2026-06-04（安全強化：/static/incoming/ 存取保護、登入 IP 速率限制、X-Forwarded-For 防偽、Host header 注入修補）| **狀態**: 生產就緒
 
 ## 開發中 / 規劃中功能
 
