@@ -103,6 +103,49 @@
             transform: none;
         }
 
+        /* Download progress bar */
+        .dl-progress-wrap {
+            display: none;
+        }
+        .dl-progress-bar {
+            width: 100%;
+            height: 2px;
+            background: rgba(43, 43, 43, 0.07);
+            border-radius: 1px;
+            overflow: hidden;
+        }
+        .dl-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: rgba(43, 43, 43, 0.38);
+            border-radius: 1px;
+            transition: width 0.12s ease;
+        }
+        @keyframes dlSweep {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        .dl-progress-fill.indeterminate {
+            width: 100%;
+            transition: none;
+            background: linear-gradient(
+                90deg,
+                rgba(43,43,43,0.04) 0%,
+                rgba(43,43,43,0.32) 50%,
+                rgba(43,43,43,0.04) 100%
+            );
+            background-size: 200% 100%;
+            animation: dlSweep 1.4s ease infinite;
+        }
+        .dl-progress-text {
+            font-size: 0.5rem;
+            letter-spacing: 0.22em;
+            color: rgba(184, 197, 214, 0.75);
+            text-align: center;
+            display: block;
+            margin-top: 5px;
+        }
+
         /* Mobile hint — only shown on touch devices without Web Share API */
         .mobile-hint {
             font-size: 0.55rem;
@@ -170,6 +213,12 @@
                          color:rgba(43,43,43,0.75); user-select:all;">{code}</span>
         </div>
         <button id="btn-dl" class="btn-download" data-i18n="dl.btn">下載照片</button>
+        <div id="dl-progress-wrap" class="dl-progress-wrap">
+            <div class="dl-progress-bar">
+                <div id="dl-progress-fill" class="dl-progress-fill"></div>
+            </div>
+            <span id="dl-progress-text" class="dl-progress-text"></span>
+        </div>
         <p class="mobile-hint" id="mobile-hint" data-i18n="dl.mobileHint">下載後請至「檔案」App 長按照片，選擇「加入照片圖庫」</p>
     </div>
 
@@ -253,33 +302,97 @@
         if (ctrl && ['s', 'u', 'p'].includes(e.key.toLowerCase())) e.preventDefault();
     });
 
+    /* ── Download helpers ── */
+    function _dlFmtBytes(b) {
+        if (b < 1024) return b + ' B';
+        if (b < 1048576) return (b / 1024).toFixed(0) + ' KB';
+        return (b / 1048576).toFixed(1) + ' MB';
+    }
+
+    async function _fetchWithProgress(url, onProgress) {
+        var resp = await fetch(url);
+        if (!resp.ok) throw new Error('fetch failed');
+        var contentType = resp.headers.get('Content-Type') || 'image/jpeg';
+        var contentLength = resp.headers.get('Content-Length');
+        var total = contentLength ? parseInt(contentLength, 10) : 0;
+        var reader = resp.body.getReader();
+        var chunks = [];
+        var received = 0;
+        while (true) {
+            var result = await reader.read();
+            if (result.done) break;
+            chunks.push(result.value);
+            received += result.value.length;
+            if (onProgress) onProgress(total > 0 ? received / total : -1, received);
+        }
+        return new Blob(chunks, { type: contentType });
+    }
+
     /* ── Download button — always fetches full-resolution original ── */
     document.getElementById('btn-dl').addEventListener('click', async function () {
-        var btn = this;
-        var origText = btn.textContent;
+        var btn  = this;
+        var orig = btn.textContent;
+        var wrap  = document.getElementById('dl-progress-wrap');
+        var fill  = document.getElementById('dl-progress-fill');
+        var label = document.getElementById('dl-progress-text');
+
+        function setProgress(ratio, received) {
+            if (ratio < 0) {
+                fill.classList.add('indeterminate');
+                label.textContent = _dlFmtBytes(received);
+            } else {
+                fill.classList.remove('indeterminate');
+                var pct = Math.round(ratio * 100);
+                fill.style.width = pct + '%';
+                label.textContent = pct + '%';
+            }
+        }
+
+        function resetProgress(delay) {
+            setTimeout(function () {
+                wrap.style.display = 'none';
+                fill.classList.remove('indeterminate');
+                fill.style.width = '0%';
+                label.textContent = '';
+            }, delay);
+        }
+
         btn.disabled = true;
         btn.textContent = '...';
+        fill.classList.remove('indeterminate');
+        fill.style.width = '0%';
+        label.textContent = '0%';
+        wrap.style.display = 'block';
+
         try {
-            var resp = await fetch('/api/photo/{code}?dl=1');
-            if (!resp.ok) throw new Error('fetch failed');
-            var blob = await resp.blob();
+            var blob = await _fetchWithProgress('/api/photo/{code}?dl=1', setProgress);
+
+            /* Show 100% briefly */
+            fill.classList.remove('indeterminate');
+            fill.style.width = '100%';
+            label.textContent = '100%';
+
             var extMap = { 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' };
-            var ext = extMap[blob.type] || 'jpg';
+            var ext  = extMap[blob.type] || 'jpg';
             var filename = 'photo_{code}.' + ext;
 
             /* Web Share API — on iOS 15+ / Android 86+ lets the user save directly to Photos */
+            var shared = false;
             if (navigator.canShare) {
                 var file = new File([blob], filename, { type: blob.type });
                 if (navigator.canShare({ files: [file] })) {
+                    resetProgress(600);
+                    btn.textContent = orig;
+                    btn.disabled = false;
                     try {
                         await navigator.share({ files: [file] });
-                        return;
+                        shared = true;
                     } catch (err) {
-                        if (err.name === 'AbortError') return; /* user cancelled */
-                        /* Other error: fall through to blob download */
+                        shared = (err.name === 'AbortError'); /* cancelled = handled */
                     }
                 }
             }
+            if (shared) return;
 
             /* Fallback: trigger browser download via blob URL */
             var url = URL.createObjectURL(blob);
@@ -290,11 +403,12 @@
             a.click();
             document.body.removeChild(a);
             setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+            resetProgress(800);
 
         } catch (err) {
-            /* silently fail */
+            wrap.style.display = 'none';
         } finally {
-            btn.textContent = origText;
+            btn.textContent = orig;
             btn.disabled = false;
         }
     });
