@@ -162,6 +162,9 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-04 | `open_incoming_folder()` 改用 `request.client.host` 做本機判斷 | 原本以 `Host` header 檢查是否為 localhost；`Host` header 是 HTTP 層欄位，用戶端可偽造；透過 ngrok 的外部請求可設 `Host: localhost` 繞過判斷，觸發 `explorer.exe` 開啟資料夾（雖需 admin auth，但資訊洩漏風險）；改用 TCP 連線遠端 IP（`request.client.host`）才能真正確認是本機連線 |
 | 2026-06-04 | 字型上傳改為支援多選批次 | 使用者每次只能選一個字型檔上傳，多字型需重複操作；`upload_font` 後端改為 `files: List[UploadFile]`，逐檔驗證（格式 / 大小），全部成功才一次寫入 metadata，部分失敗時仍儲存成功的字型並以 `errors` 陣列回傳失敗清單；前端 `fontFile` input 加 `multiple` 屬性，`uploadFont()` 改用 `files.forEach(f => formData.append('files', f))` 打包；成功後顯示上傳數量，部分失敗時另以 `alert` 列出失敗檔名與原因 |
 | 2026-06-04 | ngrok 重置、啟動驗證、Token 狀態提示；Gallery 快取重置；pyngrok in-memory 清理；重置後 Gallery UI 不同步 | **Bug 1（重置未清 ngrok）**：`reset_system()` 未清除 `ngrok_config.json` 也未停止隧道；**Fix**：重置最前面加「停止並清除 ngrok 設定」區塊，`stop_tunnel()` → 刪 `NGROK_CONFIG_FILE` → `conf.get_default().auth_token = None`（清 pyngrok in-memory）。**Bug 2（重啟後 Token 輸入框空白）**：`/api/admin/ngrok/status` 不含 token 是否存在的資訊，UI 無法顯示「已儲存」；**Fix**：`get_ngrok_status()` 新增 `has_token` 欄位；`applyNgrokUI()` 加第三參數，非活動狀態時顯示/隱藏 `#ngrokTokenSaved` 徽章；`loadNgrokStatus()` 傳入 `res.data.has_token`；reset handler 補呼叫 `loadNgrokStatus()`。**Bug 3（pyngrok 快取繞過重置）**：pyngrok 自有 token 快取（`~/.ngrok2/ngrok.yml`），重置後不需 token 即可啟動；**Fix 1（API 層）**：`start_ngrok()` 先驗證 `_load_ngrok_token() is not None`，None 則 400；**Fix 2（in-memory）**：重置時呼叫 `conf.get_default().auth_token = None` 清除當前進程的快取。**Bug 4（Gallery 快取未重置）**：`reset_system()` 完全未處理 `gallery_config.json`（未刪除），且即使刪了 `_gallery_config_cache` 仍持有舊資料，重置後 gallery 設定不變；`_invalidate_public_thumbs()` 也未呼叫導致舊浮水印縮圖仍被服務；**Fix**：重置加「重置 Gallery 設定」區塊，刪 `GALLERY_CONFIG_FILE` → `_gallery_config_cache = None` → `_invalidate_public_thumbs()`。**Bug 5（重置後 Gallery UI 不同步）**：`resetSystem()` JS handler 呼叫了 `loadIncoming`、`loadNgrokStatus`、`loadLineConfig` 等，但漏掉 `loadGallerySettings()`，導致 Gallery 區塊的浮水印文字等設定在 admin UI 仍顯示舊值，必須手動重新整理才能看到正確狀態；**Fix**：在 reset handler 的更新序列加入 `loadGallerySettings()` |
+| 2026-06-04 | CSP `unsafe-inline` 移除：採用 Nonce 方案 | 備選方案「抽出 .js/.css 靜態檔」須新增 mount 且 JS 與 HTML 緊密耦合，維護負擔大；「靜態 CSP Hash」每次改 inline 內容都要重算 hash，與直接編輯 HTML 的開發流程衝突；Nonce 方案：`add_security_headers` middleware 在 `call_next` 之前生成 `secrets.token_urlsafe(16)` 存入 `request.state.csp_nonce`，路由層呼叫 `_apply_nonce(html, nonce)` 替換 `__CSP_NONCE__` 佔位符；4 個 HTML 模板的 `<script>`（無 src）與 `<style>` 標籤均已加 `nonce="__CSP_NONCE__"`；HTML cache 仍有效（快取含佔位符的模板，替換在記憶體進行，開銷遠小於磁碟 I/O） |
+| 2026-06-04 | `style-src` 無法移除 `unsafe-inline`（Tailwind Play CDN 根本限制） | Tailwind Play CDN（`cdn.tailwindcss.com`）以 JavaScript 動態插入 `<style>` 元素，無法預先帶 nonce；CSP Level 2 規定：當 `style-src` 含 `nonce-*` 時 `unsafe-inline` 自動被忽略，因此 `style-src 'nonce-{nonce}' 'unsafe-inline'` 也不可行；`<meta property="csp-nonce">` 機制亦測試確認無效；唯一有效方案是 `style-src 'unsafe-inline'`（不含 nonce），Tailwind 動態 style 才能通過；CSS injection 危害遠低於 script injection，為可接受的設計決策 |
+| 2026-06-04 | HTML 模板全面移除 inline event handler（attribute 形式），改用 `addEventListener` | inline event handler（`onclick="…"`、`onchange="…"` 等 attribute 形式）屬於「inline script」；在 `script-src` 含有 `nonce-*` 但不含 `unsafe-inline` 的 CSP Level 3 環境下，瀏覽器對這類 attribute event handler **一律封鎖**，且無法為其附加 nonce（nonce 只對 `<script>` 元素本體有效）；0.4.9 nonce 化完成後，所有頁面的互動按鈕功能全部靜默失效（無 console error，僅 handler 不執行）；修正方式：admin.html 22 個 handler 全部移至 `DOMContentLoaded` 的 `addEventListener` 呼叫，動態生成的重試按鈕改用 `data-uid` + 事件委派；index.html 1 個；login.html 的 hover 效果改為 CSS `:hover`；download.html 無 script，無需修改 |
 
 ---
 
@@ -192,6 +195,10 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**在 `_get_client_ip()` 恢復無條件信任 `X-Forwarded-For` 的寫法 — 此 header 可被任何用戶端偽造；必須透過 `TRUSTED_PROXY_IPS` 環境變數明確設定可信代理後才信任；否則攻擊者可輪換假 IP 規避所有速率限制
 - **不得**在 `login()` 端點移除 `_check_login_rate_limit(client_ip)` 呼叫 — 帳號維度的鎖定（`is_account_locked`）無法防止帳號噴灑攻擊（攻擊者輪流嘗試大量帳號各試 4 次，永遠不觸發鎖定）；IP 維度速率限制是必要的補充防線
 - **不得**在 `open_incoming_folder()` 恢復使用 `Host` header 做本機檢查 — `Host` header 是用戶端可控制的 HTTP 標頭；透過 ngrok 的請求可偽造 `Host: localhost` 通過檢查；必須改用 `request.client.host`（TCP 連線來源 IP）
+- **不得**在 `add_security_headers` 的 `script-src` 中重新加入 `'unsafe-inline'` — nonce 已替代 `unsafe-inline`，重新加入使 XSS 攻擊者可注入任意 script；`style-src` 的 `'unsafe-inline'` 是 Tailwind CDN 限制，不得移除（移除後 Tailwind 動態注入樣式被封鎖，layout 崩潰）
+- **不得**在任何 HTML 模板中新增無 `nonce` 屬性的 `<script>` 標籤（無 `src`）— 缺少 nonce 的 inline script 會被 `script-src 'nonce-...'` 阻擋，造成 JS 功能中斷
+- **不得**對 `_apply_nonce(html, nonce)` 傳入靜態或可預測的 nonce 字串 — nonce 必須來自 `request.state.csp_nonce`（每請求由 `secrets.token_urlsafe(16)` 生成），重用或可預測的 nonce 使 CSP nonce 保護失效
+- **不得**在 HTML 模板中使用 attribute 形式的 inline event handler（`onclick="…"`、`onchange="…"`、`onmouseover="…"` 等）— CSP Level 3 `script-src 'nonce-*'` 會封鎖所有 attribute event handler（nonce 對 `<script>` 元素有效，對 HTML attribute 無效）；所有事件綁定必須在 `<script nonce="__CSP_NONCE__">` 區塊內以 `addEventListener` 完成；動態生成的元素（如重試按鈕）改用 `data-*` 屬性 + 事件委派（event delegation）
 
 ---
 
@@ -259,6 +266,113 @@ curl -s https://cdn.jsdelivr.net/npm/axios@X.Y.Z/dist/axios.min.js | \
 | `font-src` | `fonts.gstatic.com` |
 
 新增外部 CDN 資源時，必須更新對應指令的白名單，不可使用萬用字元（`*`）。
+
+---
+
+## CSP Nonce — `script-src` 移除 `unsafe-inline`（✅ 已完成 0.4.9）
+
+**目標**：移除 `script-src` 中的 `'unsafe-inline'`，使 XSS 攻擊者無法注入並執行 inline script。  
+**方案**：CSP Nonce（script-src 嚴格 nonce）+ style-src 保留 `'unsafe-inline'`（Tailwind CDN 限制）。
+
+> **為何 style-src 無法移除 `unsafe-inline`**：Tailwind Play CDN 在執行時以 JavaScript 動態插入 `<style>` 元素，這些元素不是伺服器渲染，無法預先帶 nonce。CSP Level 2 規範明確指出：當 `style-src` 含有 `nonce-*` 時，`unsafe-inline` 在支援 CSP2 的瀏覽器中**自動被忽略**（即同時存在也沒用）。唯一讓 Tailwind CDN 正常運作的方式是 `style-src 'unsafe-inline'`。CSS injection 危害遠低於 script injection（無法竊取 cookie / 執行任意程式），為本專案可接受的設計決策。
+
+### Phase 1：後端 Nonce 基礎設施（`main.py`）
+
+在 `add_security_headers` middleware 中，於 `call_next` **之前**生成 nonce 並存入 `request.state`：
+
+```python
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    nonce = secrets.token_urlsafe(16)
+    request.state.csp_nonce = nonce
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net https://cdn.tailwindcss.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: blob:; "
+        "connect-src 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'"
+    )
+    # ... 其餘 headers 不變
+    return response
+```
+
+新增 helper function（置於 `_html_cache` 附近）：
+
+```python
+def _apply_nonce(html: str, nonce: str) -> str:
+    return html.replace("__CSP_NONCE__", nonce)
+```
+
+更新所有頁面路由，於回傳前注入 nonce（`download.html` 需同時處理 `{code}` 替換）：
+
+```python
+@app.get("/", response_class=HTMLResponse, tags=["Pages"])
+async def get_index(request: Request) -> str:
+    return _apply_nonce(_get_html("index.html"), request.state.csp_nonce)
+
+@app.get("/login", response_class=HTMLResponse, tags=["Pages"])
+async def get_login_page(request: Request) -> str:
+    return _apply_nonce(_get_html("login.html"), request.state.csp_nonce)
+
+@app.get("/admin", response_class=HTMLResponse, tags=["Pages"])
+async def get_admin_page(request: Request, pb_session: Optional[str] = Cookie(default=None)) -> Response:
+    if not auth.validate_session(pb_session):
+        return RedirectResponse(url="/login", status_code=302)
+    return HTMLResponse(_apply_nonce(_get_html("admin.html"), request.state.csp_nonce))
+
+# download 路由：先 replace nonce，再 replace code
+html = _apply_nonce(_get_html("download.html"), request.state.csp_nonce).replace("{code}", code)
+```
+
+> **注意**：`_html_cache` 快取的是含 `__CSP_NONCE__` 佔位符的模板字串，每次請求的字串替換開銷遠小於磁碟 I/O，快取機制不受影響。
+
+### Phase 2：HTML 模板標記（4 個 template 檔案）
+
+所有**無 `src` 屬性**的 `<script>` 加上 `nonce="__CSP_NONCE__"`（受 script-src nonce 強制驗證）；  
+`<style>` 標籤同樣加上 `nonce="__CSP_NONCE__"`（style-src 用 unsafe-inline，nonce 屬性為冗餘但無害）；  
+**所有 attribute 形式的 inline event handler（`onclick=`、`onchange=` 等）必須移除**，改為在 `<script nonce>` 區塊以 `addEventListener` 綁定（CSP Level 3 的 nonce 只對 `<script>` 元素有效，attribute handler 同樣被封鎖）：
+
+```html
+<!-- Before -->
+<script>tailwind.config = { darkMode: 'class' }</script>
+<style> ... </style>
+<script> /* 主 JS */ </script>
+
+<!-- After -->
+<script nonce="__CSP_NONCE__">tailwind.config = { darkMode: 'class' }</script>
+<style nonce="__CSP_NONCE__"> ... </style>
+<script nonce="__CSP_NONCE__"> /* 主 JS */ </script>
+```
+
+帶 `src` 的**外部 CDN script**（Axios、Tailwind）**不需加 nonce**，已由 domain 白名單覆蓋：
+
+```html
+<!-- 不需修改 -->
+<script src="https://cdn.jsdelivr.net/npm/axios@1.16.1/dist/axios.min.js"
+        integrity="sha384-..." crossorigin="anonymous"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+```
+
+### 驗收標準
+
+- 瀏覽器 Console 無任何 CSP 違規訊息（`Content Security Policy` 開頭的錯誤）
+- 所有頁面功能正常：admin 4-tab、上傳、Gallery、WebSocket 推播
+- `curl -I http://localhost:8000/admin` 的 `Content-Security-Policy` 響應標頭：`script-src` **不含** `unsafe-inline`、`style-src` **含** `unsafe-inline`（Tailwind CDN 限制）
+
+### 不應採用的替代方案
+
+| 方案 | 捨棄原因 |
+|------|---------|
+| 抽出為外部 `.js` / `.css` 靜態檔 | 需新增 `StaticFiles` mount 且 JS/CSS 與 HTML 緊密耦合，維護負擔大 |
+| CSP Hash（`sha256-...`）靜態計算 | 每次修改 inline script 都須手動重算 hash，與直接編輯 HTML 的開發流程衝突 |
+| `style-src 'nonce-...'`（移除 `unsafe-inline`）| CSP Level 2 規定：`nonce-*` 存在時 `unsafe-inline` 自動失效；Tailwind CDN 動態注入的 style 無法帶 nonce，導致所有 Tailwind 樣式被阻擋，整個 layout 崩潰 |
+| `<meta property="csp-nonce">` 讓 Tailwind CDN 讀取 nonce | Tailwind Play CDN 不支援此機制（測試確認無效），此方案已被排除 |
 
 ---
 

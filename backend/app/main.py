@@ -425,6 +425,8 @@ async def protect_static_incoming(request: Request, call_next):
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    nonce = secrets.token_urlsafe(16)
+    request.state.csp_nonce = nonce
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -432,8 +434,8 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' https://cdn.jsdelivr.net https://cdn.tailwindcss.com 'unsafe-inline'; "
-        "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
+        f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net https://cdn.tailwindcss.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: blob:; "
         "connect-src 'self'; "
@@ -501,6 +503,10 @@ def _require_auth(pb_session: Optional[str]) -> str:
 _html_cache: Dict[str, Optional[str]] = {}
 
 
+def _apply_nonce(html: str, nonce: str) -> str:
+    return html.replace("__CSP_NONCE__", nonce)
+
+
 def _get_html(name: str) -> str:
     reload_mode = os.getenv("RELOAD_ADMIN_HTML", "false").lower() == "true"
     if _html_cache.get(name) is None or reload_mode:
@@ -514,28 +520,28 @@ def _get_html(name: str) -> str:
 # ==================== 頁面路由 ====================
 
 @app.get("/", response_class=HTMLResponse, tags=["Pages"])
-async def get_index() -> str:
+async def get_index(request: Request) -> str:
     try:
-        return _get_html("index.html")
+        return _apply_nonce(_get_html("index.html"), request.state.csp_nonce)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="頁面不存在")
 
 
 
 @app.get("/login", response_class=HTMLResponse, tags=["Pages"])
-async def get_login_page() -> str:
+async def get_login_page(request: Request) -> str:
     try:
-        return _get_html("login.html")
+        return _apply_nonce(_get_html("login.html"), request.state.csp_nonce)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="頁面不存在")
 
 
 @app.get("/admin", response_class=HTMLResponse, tags=["Pages"])
-async def get_admin_page(pb_session: Optional[str] = Cookie(default=None)) -> Response:
+async def get_admin_page(request: Request, pb_session: Optional[str] = Cookie(default=None)) -> Response:
     if not auth.validate_session(pb_session):
         return RedirectResponse(url="/login", status_code=302)
     try:
-        return HTMLResponse(_get_html("admin.html"))
+        return HTMLResponse(_apply_nonce(_get_html("admin.html"), request.state.csp_nonce))
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="頁面不存在")
 
@@ -1193,7 +1199,7 @@ async def photo_download_page(code: str, request: Request) -> HTMLResponse:
     if not filename or not (INCOMING_DIR / filename).exists():
         return HTMLResponse("<h3 style='font-family:sans-serif;text-align:center;margin-top:4rem'>找不到照片，取件碼可能已過期或不存在。</h3>", status_code=404)
     try:
-        html = _get_html("download.html").replace("{code}", code)
+        html = _apply_nonce(_get_html("download.html"), request.state.csp_nonce).replace("{code}", code)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="頁面不存在")
     return HTMLResponse(html)

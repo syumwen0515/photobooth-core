@@ -7,7 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/axios@1.16.1/dist/axios.min.js"
             integrity="sha384-LEhCeSYMzzIZgXNDqOnt039uBFADh2Yf9gaWTpae2Da9UHXEkW6C95emO9aEKIlp"
             crossorigin="anonymous"></script>
-    <style>
+    <style nonce="__CSP_NONCE__">
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300;400&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -88,6 +88,8 @@
         .btn-login:active { transform: scale(0.98); }
         .btn-login:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
+        .wa-back-link:hover { opacity: 0.7; }
+
         @keyframes fadeUp {
             from { opacity: 0; transform: translateY(14px); }
             to   { opacity: 1; transform: translateY(0); }
@@ -167,9 +169,8 @@
     </form>
 
     <div class="anim d4" style="text-align:right; margin-top:20px;">
-        <a href="/" style="font-size:0.65rem; letter-spacing:0.12em; color:rgba(184,197,214,0.65);
-           font-weight:300; text-decoration:none; transition:opacity 0.2s;"
-           onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1">← 首頁</a>
+        <a href="/" class="wa-back-link" style="font-size:0.65rem; letter-spacing:0.12em; color:rgba(184,197,214,0.65);
+           font-weight:300; text-decoration:none; transition:opacity 0.2s;">← 首頁</a>
     </div>
 
 </div>
@@ -181,7 +182,7 @@
     </span>
 </div>
 
-<script>
+<script nonce="__CSP_NONCE__">
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn    = document.getElementById('loginBtn');

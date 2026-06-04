@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300;400&display=swap">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
+    <script nonce="__CSP_NONCE__">
         tailwind.config = {
             darkMode: 'class',
             theme: {
@@ -25,7 +25,7 @@
             }
         }
     </script>
-    <style>
+    <style nonce="__CSP_NONCE__">
         /* ── Theme tokens ───────────────────────────── */
         :root {
             --wa-cream:  #f5f5f0;
@@ -310,6 +310,8 @@
             color: rgba(220, 60, 60, 0.9);
             transform: rotate(-180deg);
         }
+
+        #uploadPanelCloseBtn:hover { opacity: 1 !important; }
     </style>
 </head>
 <body class="min-h-screen relative">
@@ -339,16 +341,16 @@
                style="letter-spacing:0.08em;" data-i18n="nav.home">← 首頁</a>
             <div class="flex items-center gap-2">
                 <!-- Theme toggle -->
-                <button id="themeToggle" onclick="toggleTheme()" class="btn-icon" title="切換主題">
+                <button id="themeToggle" class="btn-icon" title="切換主題">
                     <span id="themeIcon">☀</span>
                     <span id="themeLabel">淺色</span>
                 </button>
                 <!-- Language toggle -->
-                <button id="langToggle" onclick="toggleLang()" class="btn-icon" title="Toggle language">
+                <button id="langToggle" class="btn-icon" title="Toggle language">
                     <span id="langLabel">EN</span>
                 </button>
                 <!-- Logout -->
-                <button onclick="logout()" class="btn-danger" style="padding:4px 14px; font-size:0.7rem;" data-i18n="nav.logout">
+                <button id="logoutBtn" class="btn-danger" style="padding:4px 14px; font-size:0.7rem;" data-i18n="nav.logout">
                     登出
                 </button>
             </div>
@@ -415,9 +417,9 @@
                         <div class="flex gap-2 flex-wrap">
                             <label class="cursor-pointer btn-primary" data-i18n="bg.upload">
                                 上傳底圖
-                                <input type="file" id="bgFile" accept=".jpg,.jpeg,.png,.webp" class="hidden" onchange="uploadBg(this)">
+                                <input type="file" id="bgFile" accept=".jpg,.jpeg,.png,.webp" class="hidden">
                             </label>
-                            <button id="deleteBgBtn" onclick="deleteBg()" class="hidden btn-danger" data-i18n="bg.delete">
+                            <button id="deleteBgBtn" class="hidden btn-danger" data-i18n="bg.delete">
                                 移除底圖
                             </button>
                         </div>
@@ -449,7 +451,7 @@
                         <div class="flex items-center gap-3 flex-wrap pt-1">
                             <label id="fontUploadLabel" class="cursor-pointer btn-primary" data-i18n="fonts.upload">
                                 上傳字型
-                                <input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" multiple class="hidden" onchange="uploadFont(this)">
+                                <input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" multiple class="hidden">
                             </label>
                             <span id="fontUploadMsg" class="text-xs font-light text-wa-blue hidden"></span>
                         </div>
@@ -501,7 +503,7 @@
                             </select>
                         </div>
                         <div class="flex items-center gap-2">
-                            <button onclick="saveIndexText()" class="btn-primary" data-i18n="btn.saveApply">儲存並套用</button>
+                            <button id="saveIndexTextBtn" class="btn-primary" data-i18n="btn.saveApply">儲存並套用</button>
                             <span id="idxTextMsg" class="text-xs font-light text-wa-blue hidden"></span>
                         </div>
                     </div>
@@ -540,7 +542,7 @@
                             <p class="text-xs text-wa-blue font-light mb-1" data-i18n="line.webhookLabel">Webhook URL（貼入 LINE Developers Console）</p>
                             <div class="flex items-center gap-2">
                                 <input id="lineWebhookUrl" readonly class="wa-input flex-1">
-                                <button onclick="copyWebhookUrl()" class="btn-outline whitespace-nowrap" data-i18n="btn.copy">複製</button>
+                                <button id="copyWebhookBtn" class="btn-outline whitespace-nowrap" data-i18n="btn.copy">複製</button>
                             </div>
                         </div>
                         <div>
@@ -552,7 +554,7 @@
                             <input id="lineAccessToken" type="password" class="wa-input" data-i18n-placeholder="line.tokenPlaceholder">
                         </div>
                         <div class="flex items-center gap-2">
-                            <button onclick="saveLineConfig()" class="btn-primary" data-i18n="btn.saveApply">儲存並套用</button>
+                            <button id="saveLineConfigBtn" class="btn-primary" data-i18n="btn.saveApply">儲存並套用</button>
                             <span id="lineConfigMsg" class="text-xs font-light text-wa-blue hidden"></span>
                         </div>
                         <p class="text-xs text-wa-blue/70 font-light" data-i18n="line.hint">
@@ -586,22 +588,22 @@
                                 <span id="ngrokStatus" class="text-sm font-light text-wa-blue" data-i18n="status.stopped">未啟動</span>
                             </div>
                             <div class="flex items-center gap-2">
-                                <button id="ngrokStartBtn" onclick="startNgrok()" class="btn-primary" data-i18n="ngrok.start">啟動 ngrok</button>
-                                <button id="ngrokStopBtn" onclick="stopNgrok()" class="hidden btn-danger" data-i18n="ngrok.stop">停止</button>
+                                <button id="ngrokStartBtn" class="btn-primary" data-i18n="ngrok.start">啟動 ngrok</button>
+                                <button id="ngrokStopBtn" class="hidden btn-danger" data-i18n="ngrok.stop">停止</button>
                             </div>
                         </div>
                         <div id="ngrokTokenRow" class="flex items-center gap-2">
                             <span class="text-xs text-wa-blue font-light whitespace-nowrap">Auth Token</span>
                             <input id="ngrokTokenInput" type="password" class="wa-input flex-1" data-i18n-placeholder="ngrok.tokenPlaceholder">
                             <span id="ngrokTokenSaved" class="text-xs text-wa-blue/70 font-light hidden" data-i18n="ngrok.tokenSaved">✓ 已儲存</span>
-                            <button onclick="toggleTokenVisibility()" id="ngrokTokenToggle"
+                            <button id="ngrokTokenToggle"
                                     class="btn-outline whitespace-nowrap" data-i18n="btn.show">顯示</button>
                         </div>
                         <div id="ngrokUrlRow" class="hidden flex items-center gap-2">
                             <span class="text-xs text-wa-blue font-light whitespace-nowrap" data-i18n="ngrok.publicUrl">公開網址</span>
                             <a id="ngrokUrlLink" href="#" target="_blank"
                                class="text-xs font-light text-wa-gray underline underline-offset-2 truncate max-w-xs"></a>
-                            <button onclick="copyNgrokUrl()" class="ml-1 btn-outline" data-i18n="btn.copy">複製</button>
+                            <button id="copyNgrokUrlBtn" class="ml-1 btn-outline" data-i18n="btn.copy">複製</button>
                         </div>
                         <p class="text-xs text-wa-blue/70 font-light" data-i18n="ngrok.hint">
                             啟動後 LINE BOT Webhook URL 將自動改用 ngrok 公開網址。
@@ -650,7 +652,7 @@
                         <span class="block text-xs text-wa-blue font-light" data-i18n="gallery.watermarkHint">顯示於公開 Gallery 縮圖，最多 40 字元</span>
                     </div>
                     <div class="flex items-center gap-3">
-                        <button onclick="saveGallerySettings()" class="btn-primary" style="font-size:0.75rem; padding:6px 16px;" data-i18n="btn.saveApply">儲存並套用</button>
+                        <button id="saveGalleryBtn" class="btn-primary" style="font-size:0.75rem; padding:6px 16px;" data-i18n="btn.saveApply">儲存並套用</button>
                         <span id="gallerySettingsMsg" class="text-xs text-wa-blue font-light" style="display:none;"></span>
                     </div>
                 </div>
@@ -665,14 +667,14 @@
                     <span id="incomingCount" class="text-xs text-wa-blue font-light"></span>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button id="openFolderBtn" onclick="openIncomingFolder()" class="btn-outline" style="font-size:0.7rem; padding:5px 12px;" data-i18n="photos.openFolder">
+                    <button id="openFolderBtn" class="btn-outline" style="font-size:0.7rem; padding:5px 12px;" data-i18n="photos.openFolder">
                         開啟資料夾
                     </button>
                     <label id="incomingUploadLabel" class="cursor-pointer btn-primary" style="font-size:0.7rem; padding:5px 12px;" data-i18n="photos.upload">
                         上傳照片
-                        <input type="file" id="incomingUploadFile" accept=".jpg,.jpeg,.png" multiple class="hidden" onchange="uploadIncomingPhotos(this)">
+                        <input type="file" id="incomingUploadFile" accept=".jpg,.jpeg,.png" multiple class="hidden">
                     </label>
-                    <button onclick="clearIncoming()" class="btn-danger" style="font-size:0.7rem; padding:5px 12px;" data-i18n="photos.clearAll">
+                    <button id="clearIncomingBtn" class="btn-danger" style="font-size:0.7rem; padding:5px 12px;" data-i18n="photos.clearAll">
                         清除全部
                     </button>
                 </div>
@@ -720,7 +722,7 @@
                                     <input type="password" id="newPassword" class="wa-input">
                                 </div>
                             </div>
-                            <button onclick="addAccount()" class="btn-primary" data-i18n="accounts.add">新增帳號</button>
+                            <button id="addAccountBtn" class="btn-primary" data-i18n="accounts.add">新增帳號</button>
                         </div>
                     </div>
                 </div>
@@ -755,7 +757,7 @@
                         </div>
                         <div id="resetResult" class="hidden rounded-lg px-4 py-3 text-xs font-light space-y-1"
                              style="background:var(--wa-cream); border:1px solid var(--border); color:var(--text-main);"></div>
-                        <button onclick="resetSystem()"
+                        <button id="resetBtn"
                                 class="px-4 py-1.5 bg-red-400 text-white text-xs font-light rounded hover:bg-red-500 transition-all active:scale-95"
                                 data-i18n="reset.btn">
                             執行重置
@@ -799,13 +801,13 @@
             <p id="pwModalErr" class="hidden text-xs text-red-400 font-light"></p>
         </div>
         <div class="flex justify-end gap-2 pt-1">
-            <button onclick="closePwModal()" class="btn-outline" style="padding:5px 14px;" data-i18n="btn.cancel">取消</button>
-            <button onclick="submitChangePassword()" class="btn-primary" style="padding:5px 14px;" data-i18n="pw.submit">確認變更</button>
+            <button id="pwCancelBtn" class="btn-outline" style="padding:5px 14px;" data-i18n="btn.cancel">取消</button>
+            <button id="pwSubmitBtn" class="btn-primary" style="padding:5px 14px;" data-i18n="pw.submit">確認變更</button>
         </div>
     </div>
 </div>
 
-<script>
+<script nonce="__CSP_NONCE__">
     const API_URL = '';
 
     // ═══════════════════════════════════════════════
@@ -1373,7 +1375,7 @@
             <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
                 <span class="text-xs font-light truncate" style="color:var(--text-main); flex:1; min-width:0;">${safe}</span>
                 <span id="upload-pct-${uid}" class="text-xs font-light flex-shrink-0" style="color:#b8c5d6;">0%</span>
-                <button id="upload-retry-${uid}" class="upload-retry-btn" onclick="_retryUpload('${uid}')" title="${t('upload.retry')}">
+                <button id="upload-retry-${uid}" class="upload-retry-btn" data-uid="${uid}" title="${t('upload.retry')}">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
                         <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
@@ -1948,7 +1950,7 @@
     // ═══════════════════════════════════════════════
     async function resetSystem() {
         if (!confirm(t('confirm.reset'))) return;
-        const btn = document.querySelector('[onclick="resetSystem()"]');
+        const btn = document.getElementById('resetBtn');
         const resultEl = document.getElementById('resetResult');
         btn.disabled = true;
         btn.textContent = '…';
@@ -2016,6 +2018,33 @@
         await loadCustomFonts();
         loadIndexText();
         connectWebSocket();
+
+        document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+        document.getElementById('langToggle').addEventListener('click', toggleLang);
+        document.getElementById('logoutBtn').addEventListener('click', logout);
+        document.getElementById('bgFile').addEventListener('change', e => uploadBg(e.target));
+        document.getElementById('deleteBgBtn').addEventListener('click', deleteBg);
+        document.getElementById('fontFile').addEventListener('change', e => uploadFont(e.target));
+        document.getElementById('saveIndexTextBtn').addEventListener('click', saveIndexText);
+        document.getElementById('copyWebhookBtn').addEventListener('click', copyWebhookUrl);
+        document.getElementById('saveLineConfigBtn').addEventListener('click', saveLineConfig);
+        document.getElementById('ngrokStartBtn').addEventListener('click', startNgrok);
+        document.getElementById('ngrokStopBtn').addEventListener('click', stopNgrok);
+        document.getElementById('ngrokTokenToggle').addEventListener('click', toggleTokenVisibility);
+        document.getElementById('copyNgrokUrlBtn').addEventListener('click', copyNgrokUrl);
+        document.getElementById('saveGalleryBtn').addEventListener('click', saveGallerySettings);
+        document.getElementById('openFolderBtn').addEventListener('click', openIncomingFolder);
+        document.getElementById('incomingUploadFile').addEventListener('change', e => uploadIncomingPhotos(e.target));
+        document.getElementById('clearIncomingBtn').addEventListener('click', clearIncoming);
+        document.getElementById('addAccountBtn').addEventListener('click', addAccount);
+        document.getElementById('resetBtn').addEventListener('click', resetSystem);
+        document.getElementById('pwCancelBtn').addEventListener('click', closePwModal);
+        document.getElementById('pwSubmitBtn').addEventListener('click', submitChangePassword);
+        document.getElementById('uploadPanelCloseBtn').addEventListener('click', _onUploadPanelClose);
+        document.getElementById('uploadFloatList').addEventListener('click', e => {
+            const btn = e.target.closest('.upload-retry-btn');
+            if (btn && btn.dataset.uid) _retryUpload(btn.dataset.uid);
+        });
     });
 </script>
 
@@ -2024,7 +2053,7 @@
     <div class="wa-card" style="border-radius:0.6rem; box-shadow:0 8px 30px rgba(0,0,0,0.15); overflow:visible;">
         <div class="flex items-center justify-between px-4 py-2.5" style="border-bottom:1px solid var(--border);">
             <span class="text-xs font-light" style="color:#b8c5d6;" data-i18n="photos.uploadPanel">上傳進度</span>
-            <button onclick="_onUploadPanelClose()" style="font-size:0.8rem; color:#b8c5d6; background:none; border:none; cursor:pointer; opacity:0.5; padding:0 2px; transition:opacity 0.15s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">✕</button>
+            <button id="uploadPanelCloseBtn" style="font-size:0.8rem; color:#b8c5d6; background:none; border:none; cursor:pointer; opacity:0.5; padding:0 2px; transition:opacity 0.15s;">✕</button>
         </div>
         <div id="uploadFloatList" style="padding:0.75rem 1rem; max-height:220px; overflow-y:auto;" class="space-y-2.5"></div>
     </div>

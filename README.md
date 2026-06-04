@@ -246,10 +246,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | WebSocket 認證 | `/ws/photos` 連線時驗證 Session Cookie，未登入者返回 1008 Policy Violation |
 | API 文件 | 預設關閉；需明確設定 `ENABLE_API_DOCS=true` 才開放 |
 | 路徑驗證 | 所有檔案操作透過 `validate_filename_safety` + `Path.resolve().relative_to()` 雙重防護 |
-| XSS 防護 | 前端照片卡片 filename 以 HTML escape + `data-*` 屬性 + 事件委派處理，不使用 inline `onclick` |
+| XSS 防護 | 前端照片卡片 filename 以 HTML escape + `data-*` 屬性 + 事件委派處理；**全頁面所有事件綁定改用 `addEventListener`（已移除所有 `onclick=`、`onchange=` 等 attribute 形式 inline handler）**；CSP Level 3 `script-src 'nonce-*'` 封鎖所有 attribute handler，動態生成元素改用 `data-uid` + delegation |
 | 密碼輸入遮罩 | 改密碼透過頁內 Modal（`type="password"` 欄位）完成，不使用原生 `prompt()`（明碼顯示）|
 | 安全標頭 | `X-Content-Type-Options`、`X-Frame-Options: DENY`、`Referrer-Policy`、`Permissions-Policy`；HTTPS 環境下另加 `Strict-Transport-Security` |
-| Content-Security-Policy | `default-src 'self'`；`script-src` 白名單 jsdelivr / tailwind CDN；`style-src` 白名單 Google Fonts；`font-src` 白名單 fonts.gstatic.com；`img-src` 允許 `data:` / `blob:`；`connect-src 'self'`；`form-action 'self'`；`frame-ancestors 'none'`；`object-src 'none'`；`base-uri 'self'`<br>⚠️ **已知技術債**：`'unsafe-inline'` 仍存在於 `script-src`（因 admin.html 大量 inline script）；完整移除需將 inline script 全部抽出為外部 .js 檔並改用 CSP nonce |
+| Content-Security-Policy | `default-src 'self'`；`script-src` 使用 per-request nonce（`secrets.token_urlsafe(16)`）+ jsdelivr / tailwind CDN 白名單，**無 `unsafe-inline`**（XSS script injection 完全封鎖）；HTML 模板所有 attribute event handler 已移除並改用 `addEventListener`（CSP Level 3 的 nonce 不覆蓋 attribute handler，移除才能讓按鈕在嚴格 CSP 下正常運作）；`style-src` 保留 `'unsafe-inline'`（Tailwind Play CDN 動態注入樣式的必要限制）；`font-src` 白名單 fonts.gstatic.com；`img-src` 允許 `data:` / `blob:`；`connect-src 'self'`；`form-action 'self'`；`frame-ancestors 'none'`；`object-src 'none'`；`base-uri 'self'` |
 | Subresource Integrity | `login.html` / `admin.html` 的 Axios CDN 標籤加上 `integrity="sha384-..."` + 版本固定為 `axios@1.16.1`，瀏覽器驗證 hash 失敗時拒絕執行，防止 CDN 供應鏈攻擊 |
 | 本機限定功能 | `open-incoming-folder` 端點驗證 TCP 連線來源 IP（非 `Host` header，防止 ngrok 環境下的 Host 偽造），非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
@@ -276,7 +276,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.4.8 | **更新**: 2026-06-04（安全強化：/static/incoming/ 存取保護、登入 IP 速率限制、X-Forwarded-For 防偽、Host header 注入修補）| **狀態**: 生產就緒
+**版本**: 0.4.9 | **更新**: 2026-06-04（CSP Nonce 方案 + 移除全頁面 attribute event handler，改用 `addEventListener`，確保嚴格 CSP 下所有互動功能正常）| **狀態**: 生產就緒
 
 ## 開發中 / 規劃中功能
 
@@ -289,3 +289,4 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | Gallery 管理後台控制 | admin.html | ✅ 完成 | 照片 tab 新增 Gallery 設定卡片：開/關切換（toggle switch）+ 浮水印文字自訂；浮水印變更自動清伺服器快取並以 `wm_version` 使瀏覽器快取失效 |
 | 管理員網頁上傳照片 | admin.html | ✅ 完成 | 照片 tab 新增「上傳照片」按鈕；多選 JPG / PNG；自動安全命名 + 取件碼；即時插卡並廣播 WebSocket |
 | 全域佇列上傳 + 懸浮進度視窗 | admin.html | ✅ 完成 | 2 線程並發全域佇列；第二次點擊繼續排隊不另開 pool；右下角懸浮面板逐檔顯示進度條；完成綠勾 / 失敗紅叉；3 秒自動收起 |
+| CSP `script-src unsafe-inline` 移除 | 全頁面 | ✅ 完成 | Nonce 方案：middleware 生成 per-request nonce，`_apply_nonce()` 注入 4 個 HTML 模板；`script-src` 移除 `unsafe-inline`（改用 nonce，XSS script injection 封鎖）；`style-src` 保留 `unsafe-inline`（Tailwind Play CDN 動態注入 style 的根本限制）；**所有 HTML 模板的 attribute event handler（`onclick=`、`onchange=` 等）已全數移除，改用 `addEventListener`**（CSP Level 3 nonce 不覆蓋 attribute handler，須移除才能讓互動功能在嚴格 CSP 下正常） |
