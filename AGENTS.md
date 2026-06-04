@@ -397,19 +397,29 @@ html = _apply_nonce(_get_html("download.html"), request.state.csp_nonce).replace
 
 ## 多語系 i18n
 
-**admin.html：已完整實作** | login.html / download.html / index.html：尚未擴展
+**全頁面已完整實作**（admin / login / index / download）
 
 ### 設計決策
 - 純 JS 方案：在 HTML `<script>` 中定義 `const TRANSLATIONS = { 'zh-TW': {...}, 'en': {...} }`
-- 以 `data-i18n="key"` 屬性標記需翻譯的靜態元素；`t(key)` 函數取值，`setLang(lang)` 統一刷新
-- 語言偏好存 `localStorage.getItem('pb-lang')`（`"zh-TW"` / `"en"`，預設 `"zh-TW"`）
+- 以 `data-i18n="key"` 屬性標記需翻譯的靜態元素；`t(key)` 函數取值，`applyLang(lang)` 統一刷新
 - 支援語言：**正體中文（zh-TW）** 和 **英文（en）**
-- 語言切換按鈕（`.btn-icon`）放在 admin header，深/淺色切換旁
+- 語言切換按鈕（`.btn-icon`）僅在 **admin.html** header 右上角，供管理員手動切換
+
+#### 語言偵測優先序（login / index / download）
+```
+localStorage('pb-lang')          ← 有值（管理員在 admin 切換過）則直接使用
+         ↓ 否則
+navigator.language               ← zh 開頭 → 'zh-TW'；其餘 → 'en'
+```
+偵測結果會寫回 `localStorage`，之後該裝置的所有頁面保持一致語系。
 
 ### 規則
 - 翻譯物件在各 HTML 的 `<script>` 區塊，不用外部 JSON 或 i18n 函式庫
 - 動態產生的 DOM（renderIncomingCard、renderAccounts 等）需在產生時呼叫 `t(key)` 取當前語系字串
 - `config.py` 不需改動（後端 message 字串語言由前端決定是否顯示）
+- login / index / download 的 `applyLang` 為簡化版（純 `textContent` 賦值），無需處理 placeholder / optgroup
+- download.html 額外支援 `data-i18n-alt` 屬性（用於 `<img alt>`）
+- login / index / download **不得**加回手動切換按鈕（設計決策：這三頁是訪客頁面，語言應自動符合裝置設定）
 
 ---
 

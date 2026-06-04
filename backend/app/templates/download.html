@@ -98,7 +98,7 @@
 
 <!-- Vertical side labels -->
 <div style="position:fixed; left:20px; top:50%; transform:translateY(-50%); pointer-events:none; z-index:5;">
-    <span class="vert-label">照片取件 · PHOTO PICKUP</span>
+    <span class="vert-label" data-i18n="dl.vertLabel">照片取件 · PHOTO PICKUP</span>
 </div>
 <div style="position:fixed; right:20px; top:50%; transform:translateY(-50%); pointer-events:none; z-index:5;">
     <span class="vert-label">風嶺 · CCIT</span>
@@ -118,6 +118,7 @@
     <div class="anim d2">
         <img
             src="/api/photo/{code}"
+            data-i18n-alt="dl.photoAlt"
             alt="您的照片"
             class="photo-img"
         />
@@ -126,11 +127,12 @@
     <!-- Code + download -->
     <div class="anim d3" style="display:flex; flex-direction:column; gap:12px;">
         <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
-            <span style="font-size:0.6rem; letter-spacing:0.2em; color:rgba(184,197,214,0.65); font-weight:300;">取件碼</span>
+            <span style="font-size:0.6rem; letter-spacing:0.2em; color:rgba(184,197,214,0.65); font-weight:300;"
+                  data-i18n="dl.code">取件碼</span>
             <span style="font-family:monospace; font-size:1.1rem; font-weight:400; letter-spacing:0.25em;
                          color:rgba(43,43,43,0.75); user-select:all;">{code}</span>
         </div>
-        <a href="/api/photo/{code}?dl=1" class="btn-download">下載照片</a>
+        <a href="/api/photo/{code}?dl=1" class="btn-download" data-i18n="dl.btn">下載照片</a>
     </div>
 
 </div>
@@ -142,5 +144,39 @@
     </span>
 </div>
 
+<script nonce="__CSP_NONCE__">
+    /* ── i18n ── */
+    const TRANSLATIONS = {
+        'zh-TW': {
+            'dl.vertLabel': '照片取件 · PHOTO PICKUP',
+            'dl.photoAlt':  '您的照片',
+            'dl.code':      '取件碼',
+            'dl.btn':       '下載照片',
+        },
+        'en': {
+            'dl.vertLabel': 'Photo Pickup · PHOTO PICKUP',
+            'dl.photoAlt':  'Your photo',
+            'dl.code':      'Pickup Code',
+            'dl.btn':       'Download Photo',
+        }
+    };
+    const _browserLang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
+    let _lang = localStorage.getItem('pb-lang') || _browserLang;
+    function t(key) {
+        return (TRANSLATIONS[_lang] || TRANSLATIONS['zh-TW'])[key] || key;
+    }
+    function applyLang(lang) {
+        _lang = lang;
+        localStorage.setItem('pb-lang', lang);
+        document.documentElement.lang = lang;
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            el.textContent = t(el.dataset.i18n);
+        });
+        document.querySelectorAll('[data-i18n-alt]').forEach(el => {
+            el.alt = t(el.dataset.i18nAlt);
+        });
+    }
+    applyLang(_lang);
+</script>
 </body>
 </html>

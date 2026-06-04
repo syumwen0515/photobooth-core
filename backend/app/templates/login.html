@@ -113,7 +113,7 @@
 
 <!-- Vertical side labels -->
 <div style="position:fixed; left:20px; top:50%; transform:translateY(-50%); pointer-events:none; z-index:5;">
-    <span class="vert-label">管理員登入 · LOGIN</span>
+    <span class="vert-label" data-i18n="vert.login">管理員登入 · LOGIN</span>
 </div>
 <div style="position:fixed; right:20px; top:50%; transform:translateY(-50%); pointer-events:none; z-index:5;">
     <span class="vert-label">風嶺 · CCIT</span>
@@ -148,14 +148,16 @@
         <div>
             <label for="username"
                    style="display:block; font-size:0.65rem; color:rgba(43,43,43,0.5); font-weight:300;
-                          letter-spacing:0.12em; margin-bottom:7px;">帳號</label>
+                          letter-spacing:0.12em; margin-bottom:7px;"
+                   data-i18n="login.username">帳號</label>
             <input type="text" id="username" name="username" required autocomplete="username"
                    class="wa-input">
         </div>
         <div>
             <label for="password"
                    style="display:block; font-size:0.65rem; color:rgba(43,43,43,0.5); font-weight:300;
-                          letter-spacing:0.12em; margin-bottom:7px;">密碼</label>
+                          letter-spacing:0.12em; margin-bottom:7px;"
+                   data-i18n="login.password">密碼</label>
             <input type="password" id="password" name="password" required autocomplete="current-password"
                    class="wa-input">
         </div>
@@ -164,13 +166,14 @@
            color:rgba(220,60,60,0.75); font-weight:300;"></p>
 
         <div class="anim d4" style="padding-top:4px;">
-            <button type="submit" id="loginBtn" class="btn-login">登入</button>
+            <button type="submit" id="loginBtn" class="btn-login" data-i18n="login.btn">登入</button>
         </div>
     </form>
 
     <div class="anim d4" style="text-align:right; margin-top:20px;">
         <a href="/" class="wa-back-link" style="font-size:0.65rem; letter-spacing:0.12em; color:rgba(184,197,214,0.65);
-           font-weight:300; text-decoration:none; transition:opacity 0.2s;">← 首頁</a>
+           font-weight:300; text-decoration:none; transition:opacity 0.2s;"
+           data-i18n="login.back">← 首頁</a>
     </div>
 
 </div>
@@ -183,26 +186,63 @@
 </div>
 
 <script nonce="__CSP_NONCE__">
+    /* ── i18n ── */
+    const TRANSLATIONS = {
+        'zh-TW': {
+            'vert.login':     '管理員登入 · LOGIN',
+            'login.username': '帳號',
+            'login.password': '密碼',
+            'login.btn':      '登入',
+            'login.loading':  '登入中...',
+            'login.back':     '← 首頁',
+            'login.error':    '登入失敗，請確認帳號密碼',
+        },
+        'en': {
+            'vert.login':     'Admin · LOGIN',
+            'login.username': 'Username',
+            'login.password': 'Password',
+            'login.btn':      'Sign In',
+            'login.loading':  'Signing in...',
+            'login.back':     '← Home',
+            'login.error':    'Login failed. Please check your credentials.',
+        }
+    };
+    const _browserLang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
+    let _lang = localStorage.getItem('pb-lang') || _browserLang;
+    function t(key) {
+        return (TRANSLATIONS[_lang] || TRANSLATIONS['zh-TW'])[key] || key;
+    }
+    function applyLang(lang) {
+        _lang = lang;
+        localStorage.setItem('pb-lang', lang);
+        document.documentElement.lang = lang;
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            el.textContent = t(el.dataset.i18n);
+        });
+    }
+    applyLang(_lang);
+
+    /* ── Login form ── */
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const btn    = document.getElementById('loginBtn');
-        const errMsg = document.getElementById('errorMsg');
+        const btn      = document.getElementById('loginBtn');
+        const errMsg   = document.getElementById('errorMsg');
         const username = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value;
 
         btn.disabled    = true;
-        btn.textContent = '登入中...';
+        btn.textContent = t('login.loading');
         errMsg.style.display = 'none';
 
         try {
             await axios.post('/api/auth/login', { username, password });
             window.location.href = '/admin';
         } catch (err) {
-            errMsg.textContent   = err.response?.data?.detail || '登入失敗，請確認帳號密碼';
+            errMsg.textContent   = err.response?.data?.detail || t('login.error');
             errMsg.style.display = 'block';
         } finally {
             btn.disabled    = false;
-            btn.textContent = '登入';
+            btn.textContent = t('login.btn');
         }
     });
 </script>

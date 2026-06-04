@@ -90,6 +90,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 管理後台重組為 4 個分類 Tab（外觀 / 服務 / 照片 / 系統）
 - [x] 管理後台深/淺色模式切換（CSS variables + `data-theme`，偏好存 `localStorage`）
 - [x] 管理後台多語系（正體中文 / 英文，`data-i18n` 屬性 + `TRANSLATIONS` 物件，偏好存 `localStorage`）
+- [x] **全頁面多語系擴展**（login / index / download 全部支援 zh-TW / en；自動偵測 `navigator.language`，`zh` 開頭→繁中，其餘→英文；`localStorage('pb-lang')` 跨頁持久化，admin.html 手動切換後其他頁面跟隨）
 - [x] login.html / download.html UI 改版（移除 Tailwind CDN；統一 frame-corner / vertical-label 視覺語言）
 - [x] 公開照片集 Gallery（首頁向下捲動切換；scroll-snap 兩區塊設計）
 - [x] 照片防下載保護（Canvas 渲染 + blob URL 立即撤銷 + contextmenu/drag/鍵盤快捷鍵攔截 + CSS print 隱藏）
@@ -276,7 +277,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.4.9 | **更新**: 2026-06-04（CSP Nonce 方案 + 移除全頁面 attribute event handler，改用 `addEventListener`，確保嚴格 CSP 下所有互動功能正常）| **狀態**: 生產就緒
+**版本**: 0.5.0 | **更新**: 2026-06-04（全頁面多語系擴展：login / index / download 加入 zh-TW / en 切換；語言偏好跨頁持久化）| **狀態**: 生產就緒
 
 ## 開發中 / 規劃中功能
 
@@ -285,7 +286,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 深/淺色模式切換 | admin.html | ✅ 完成 | CSS variables + `data-theme`，header 切換按鈕 |
 | 深/淺色模式切換 | login / index | 🚧 規劃中 | 尚未擴展 |
 | 多語系（i18n）| admin.html | ✅ 完成 | `TRANSLATIONS` 物件 + `data-i18n`，支援 zh-TW / en |
-| 多語系（i18n）| login / index | 🚧 規劃中 | 尚未擴展 |
+| 多語系（i18n）| login / index / download | ✅ 完成 | 右上角語言切換按鈕；TRANSLATIONS + applyLang + data-i18n；偏好跨頁持久化 |
 | Gallery 管理後台控制 | admin.html | ✅ 完成 | 照片 tab 新增 Gallery 設定卡片：開/關切換（toggle switch）+ 浮水印文字自訂；浮水印變更自動清伺服器快取並以 `wm_version` 使瀏覽器快取失效 |
 | 管理員網頁上傳照片 | admin.html | ✅ 完成 | 照片 tab 新增「上傳照片」按鈕；多選 JPG / PNG；自動安全命名 + 取件碼；即時插卡並廣播 WebSocket |
 | 全域佇列上傳 + 懸浮進度視窗 | admin.html | ✅ 完成 | 2 線程並發全域佇列；第二次點擊繼續排隊不另開 pool；右下角懸浮面板逐檔顯示進度條；完成綠勾 / 失敗紅叉；3 秒自動收起 |
