@@ -15,7 +15,7 @@
 | 圖片處理 | Pillow（Pillow 操作必須用 `run_in_executor` 非同步化）|
 | 外網穿透 | pyngrok |
 | LINE 整合 | line-bot-sdk v3 |
-| 前端 | 純 HTML + Tailwind CDN + Axios CDN（無建置工具）|
+| 前端 | 純 HTML + Axios CDN（無建置工具）；`admin.html` 使用 Tailwind CDN，其餘頁面已移除 |
 
 ---
 
@@ -166,6 +166,9 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-04 | CSP `unsafe-inline` 移除：採用 Nonce 方案 | 備選方案「抽出 .js/.css 靜態檔」須新增 mount 且 JS 與 HTML 緊密耦合，維護負擔大；「靜態 CSP Hash」每次改 inline 內容都要重算 hash，與直接編輯 HTML 的開發流程衝突；Nonce 方案：`add_security_headers` middleware 在 `call_next` 之前生成 `secrets.token_urlsafe(16)` 存入 `request.state.csp_nonce`，路由層呼叫 `_apply_nonce(html, nonce)` 替換 `__CSP_NONCE__` 佔位符；4 個 HTML 模板的 `<script>`（無 src）與 `<style>` 標籤均已加 `nonce="__CSP_NONCE__"`；HTML cache 仍有效（快取含佔位符的模板，替換在記憶體進行，開銷遠小於磁碟 I/O） |
 | 2026-06-04 | `style-src` 無法移除 `unsafe-inline`（Tailwind Play CDN 根本限制） | Tailwind Play CDN（`cdn.tailwindcss.com`）以 JavaScript 動態插入 `<style>` 元素，無法預先帶 nonce；CSP Level 2 規定：當 `style-src` 含 `nonce-*` 時 `unsafe-inline` 自動被忽略，因此 `style-src 'nonce-{nonce}' 'unsafe-inline'` 也不可行；`<meta property="csp-nonce">` 機制亦測試確認無效；唯一有效方案是 `style-src 'unsafe-inline'`（不含 nonce），Tailwind 動態 style 才能通過；CSS injection 危害遠低於 script injection，為可接受的設計決策 |
 | 2026-06-04 | HTML 模板全面移除 inline event handler（attribute 形式），改用 `addEventListener` | inline event handler（`onclick="…"`、`onchange="…"` 等 attribute 形式）屬於「inline script」；在 `script-src` 含有 `nonce-*` 但不含 `unsafe-inline` 的 CSP Level 3 環境下，瀏覽器對這類 attribute event handler **一律封鎖**，且無法為其附加 nonce（nonce 只對 `<script>` 元素本體有效）；0.4.9 nonce 化完成後，所有頁面的互動按鈕功能全部靜默失效（無 console error，僅 handler 不執行）；修正方式：admin.html 22 個 handler 全部移至 `DOMContentLoaded` 的 `addEventListener` 呼叫，動態生成的重試按鈕改用 `data-uid` + 事件委派；index.html 1 個；login.html 的 hover 效果改為 CSS `:hover`；download.html 無 script，無需修改 |
+| 2026-06-06 | Login form 移除 `method="post" action="/api/auth/login"`（ZAP Anti-CSRF — 撤銷 2026-06-03 決策）| ZAP 將此 form 標記為「缺少 Anti-CSRF Token」；登入動作從未依賴 HTML native submit — JS 以 `e.preventDefault()` 攔截，改用 `axios.post` 送出 `Content-Type: application/json`（非 simple request，瀏覽器自動做 CORS preflight），天然抵抗 CSRF；保留 `method/action` 屬性徒增表單端點暗示；移除後 ZAP Anti-CSRF finding 消失，且無需新增 server-side CSRF token |
+| 2026-06-06 | `index.html` 移除 Tailwind Play CDN；公開頁面 `style-src` 改用 `nonce-{nonce}`；`/admin` 路徑保留 `'unsafe-inline'`（ZAP SRI / 跨域 JS / style-src unsafe-inline 警告）| `cdn.tailwindcss.com` 是 JIT 動態 CDN，每次回應內容不固定，SRI hash 無法計算（ZAP SRI finding）；同時被 ZAP 標記為跨域 JS 來源（cross-domain JS finding）；解法：從 `index.html` 完全移除 Tailwind CDN，所有 utility class 改寫為具名 CSS class 置入 `<style nonce>` 區塊；`admin.html` 保留 Tailwind CDN（後台頁，已驗證身分，遷移成本高）；**Tailwind Play CDN 執行時動態注入無 nonce 的 `<style>` 元素，CSP `style-src nonce` 會封鎖這些注入，導致所有 utility class 失效、layout 崩潰**；解法：`add_security_headers` middleware 根據 `request.url.path` 切換：`/admin` 路徑用 `'unsafe-inline'`（允許 Tailwind CDN 注入），其餘路徑用 `'nonce-{nonce}'`；4 個模板共 111 個 inline `style=""` attribute 全部轉換為具名 CSS class |
+| 2026-06-06 | 動態 `@font-face` 注入改用預埋 `<style nonce>` + CSSOM 修改（`style-src nonce` 修補的必要手段）| `applyFont()` 原本以 `document.createElement('style')` 動態插入 `@font-face`；移除 `style-src 'unsafe-inline'` 後，動態建立的 `<style>` 元素無 nonce，被 CSP 封鎖；解法：HTML 預埋 `<style id="custom-font-style" nonce="__CSP_NONCE__">` 空元素，JS 改為 `document.getElementById('custom-font-style').textContent = "@font-face{...}"`（CSSOM `.textContent` 操作已通過 nonce 審核的元素，不觸發 CSP 重新驗證）；`element.style.property = value`（CSSOM API）亦不受 CSP style-src 管控，可安全使用 |
 
 ---
 
@@ -182,7 +185,7 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**直接傳 `Path` 物件給 `Image.open()` — 必須改用 `io.BytesIO(path.read_bytes())`
 - **不得**縮減 `add_security_headers` 中的 CSP 指令 — 若需新增外部資源來源（CDN、字型服務），應將其加入對應指令白名單，而非移除限制
 - **不得**移除 `axios@1.16.1` script tag 的 `integrity` 屬性，或將 CDN URL 改回無版本形式（`npm/axios/dist/axios.min.js`）；升級 axios 版本時必須同步更新 URL 和 hash
-- **不得**在 login form 移除 `method="post"` 屬性
+- **不得**在 login form 加回 `method="post"` 或 `action="..."` 屬性 — 登入以 `application/json` axios POST 提交，天然抵抗 CSRF；method/action 屬性增加攻擊面暗示（已於 2026-06-06 ZAP 修補中移除）
 - **不得**在 `update_gallery_settings` 移除 `_invalidate_public_thumbs()` 呼叫 — 浮水印已 bake 進縮圖，不清快取舊浮水印永不消失
 - **不得**在 `loadPhotoToCanvas` 移除 `?v={wm_version}` query — 這是唯一能繞過瀏覽器 24 小時快取使浮水印變更即時生效的機制
 - **不得**在 `_verify_password()` 將 `hmac.compare_digest()` 改回 `==` 字串比較 — `==` 有 short-circuit timing side channel（CWE-697），`hmac.compare_digest` 是正確的恆定時間比較方式
@@ -196,7 +199,7 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**在 `_get_client_ip()` 恢復無條件信任 `X-Forwarded-For` 的寫法 — 此 header 可被任何用戶端偽造；必須透過 `TRUSTED_PROXY_IPS` 環境變數明確設定可信代理後才信任；否則攻擊者可輪換假 IP 規避所有速率限制
 - **不得**在 `login()` 端點移除 `_check_login_rate_limit(client_ip)` 呼叫 — 帳號維度的鎖定（`is_account_locked`）無法防止帳號噴灑攻擊（攻擊者輪流嘗試大量帳號各試 4 次，永遠不觸發鎖定）；IP 維度速率限制是必要的補充防線
 - **不得**在 `open_incoming_folder()` 恢復使用 `Host` header 做本機檢查 — `Host` header 是用戶端可控制的 HTTP 標頭；透過 ngrok 的請求可偽造 `Host: localhost` 通過檢查；必須改用 `request.client.host`（TCP 連線來源 IP）
-- **不得**在 `add_security_headers` 的 `script-src` 中重新加入 `'unsafe-inline'` — nonce 已替代 `unsafe-inline`，重新加入使 XSS 攻擊者可注入任意 script；`style-src` 的 `'unsafe-inline'` 是 Tailwind CDN 限制，不得移除（移除後 Tailwind 動態注入樣式被封鎖，layout 崩潰）
+- **不得**在 `script-src` 中重新加入 `'unsafe-inline'` — nonce 已替代 `unsafe-inline`，重新加入使 XSS 攻擊者可注入任意 script；`style-src` 的 `'unsafe-inline'` 僅允許存在於 `/admin` 路徑（Tailwind Play CDN 動態注入 `<style>` 的必要條件），**不得**擴展到 `/`、`/login`、`/download/` 等公開路徑
 - **不得**在任何 HTML 模板中新增無 `nonce` 屬性的 `<script>` 標籤（無 `src`）— 缺少 nonce 的 inline script 會被 `script-src 'nonce-...'` 阻擋，造成 JS 功能中斷
 - **不得**對 `_apply_nonce(html, nonce)` 傳入靜態或可預測的 nonce 字串 — nonce 必須來自 `request.state.csp_nonce`（每請求由 `secrets.token_urlsafe(16)` 生成），重用或可預測的 nonce 使 CSP nonce 保護失效
 - **不得**在 HTML 模板中使用 attribute 形式的 inline event handler（`onclick="…"`、`onchange="…"`、`onmouseover="…"` 等）— CSP Level 3 `script-src 'nonce-*'` 會封鎖所有 attribute event handler（nonce 對 `<script>` 元素有效，對 HTML attribute 無效）；所有事件綁定必須在 `<script nonce="__CSP_NONCE__">` 區塊內以 `addEventListener` 完成；動態生成的元素（如重試按鈕）改用 `data-*` 屬性 + 事件委派（event delegation）
@@ -210,6 +213,9 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**在 `download.html` 的預覽圖載入改回直接 `<img src="/api/photo/{code}/thumb">` — ngrok free tier 對 `<img>` 子資源請求可能回傳 HTML 警告頁，觸發 `onerror`；必須改用 `fetch()` 並帶 `ngrok-skip-browser-warning: 1` header，收到回應後確認 content-type 以 `image/` 開頭才建立 blob URL 並設為 img.src
 - **不得**在 `delete_incoming` / `clear_incoming` 只清除 `.thumb.webp` — 現在 `serve_photo_thumb` 也會產生 `.thumb.jpg`；兩種縮圖快取必須一起清除，否則舊縮圖殘留 `storage/thumbs/`
 - **不得**在 `download.html` Canvas 載入改回使用 `/api/photo/{code}`（全尺寸原圖）— Canvas 僅作預覽，應使用 `/api/photo/{code}/thumb`（480px WebP），全尺寸原圖保留給下載按鈕，避免預覽就傳輸大量頻寬
+- **不得**在 HTML 模板中使用 `style=""` inline attribute — `style-src 'nonce-*'` 封鎖所有 `style=""` HTML attribute；所有樣式必須以具名 CSS class 形式置入 `<style nonce="__CSP_NONCE__">` 區塊；CSSOM API（`element.style.property = value`）不受此限，可安全使用
+- **不得**在任何 HTML 模板新增無 `nonce="__CSP_NONCE__"` 屬性的 `<style>` 元素 — 缺少 nonce 的 `<style>` 會被 `style-src 'nonce-*'` 封鎖，造成樣式失效；動態注入 CSS 改用預埋空 `<style id="..." nonce="__CSP_NONCE__">` + CSSOM `.textContent` 方式
+- **不得**將原本 `style="display:none"` inline attribute 移至 CSS 規則後，仍以 `element.style.display = ''`（空字串）顯示元素 — 空字串只清除 inline style，CSS 規則 `display:none` 仍生效，元素永遠不可見；正確寫法：`element.style.display = 'block'`（或 `'inline'`、`'flex'` 視元素而定）；同理，以 `element.style.display === 'none'` 判斷元素可見性時，若初始狀態由 CSS 而非 inline 控制，應改用 `getComputedStyle(element).display === 'none'`
 
 ---
 
@@ -280,12 +286,21 @@ curl -s https://cdn.jsdelivr.net/npm/axios@X.Y.Z/dist/axios.min.js | \
 
 ---
 
-## CSP Nonce — `script-src` 移除 `unsafe-inline`（✅ 已完成 0.4.9）
+## CSP Nonce — `script-src` 移除 `unsafe-inline`；`style-src` 按路徑分流（✅ 完成）
 
-**目標**：移除 `script-src` 中的 `'unsafe-inline'`，使 XSS 攻擊者無法注入並執行 inline script。  
-**方案**：CSP Nonce（script-src 嚴格 nonce）+ style-src 保留 `'unsafe-inline'`（Tailwind CDN 限制）。
+**目標**：移除 `script-src 'unsafe-inline'`（XSS）；在不破壞 admin.html Tailwind CDN 的前提下，盡量限縮 `style-src 'unsafe-inline'` 的範圍。  
+**方案**：script-src 全路徑 nonce；style-src 按 `request.url.path` 分流：
 
-> **為何 style-src 無法移除 `unsafe-inline`**：Tailwind Play CDN 在執行時以 JavaScript 動態插入 `<style>` 元素，這些元素不是伺服器渲染，無法預先帶 nonce。CSP Level 2 規範明確指出：當 `style-src` 含有 `nonce-*` 時，`unsafe-inline` 在支援 CSP2 的瀏覽器中**自動被忽略**（即同時存在也沒用）。唯一讓 Tailwind CDN 正常運作的方式是 `style-src 'unsafe-inline'`。CSS injection 危害遠低於 script injection（無法竊取 cookie / 執行任意程式），為本專案可接受的設計決策。
+| 路徑 | `style-src` |
+|------|------------|
+| `/admin` | `'unsafe-inline' https://fonts.googleapis.com`（Tailwind Play CDN 動態注入 `<style>` 的必要條件）|
+| 其餘路徑 | `'nonce-{nonce}' https://fonts.googleapis.com`（嚴格 nonce）|
+
+> **Tailwind Play CDN 根本限制**：Tailwind Play CDN 在瀏覽器中執行時，掃描 DOM class list 並以 JavaScript 動態 `document.head.appendChild(style)` 注入 CSS。這些 `<style>` 元素沒有 nonce，`style-src 'nonce-*'` 會封鎖全部注入，所有 utility class（`flex`、`p-4`、`min-h-screen` 等）失效，layout 完全崩潰。唯一解法是保留 `'unsafe-inline'`，或將 admin.html 完全遷離 Tailwind CDN（成本過高）。
+
+> **script-src `unsafe-inline` 移除**（0.4.9）：per-request nonce（`secrets.token_urlsafe(16)`）存入 `request.state.csp_nonce`，路由層呼叫 `_apply_nonce(html, nonce)` 替換 `__CSP_NONCE__` 佔位符，所有無 src 的 `<script>` 標籤加 nonce 屬性，attribute event handler 全數移除改用 `addEventListener`。
+>
+> **style-src 公開路徑 nonce 化**（0.5.x ZAP 修補）：`index.html` 移除 Tailwind Play CDN，所有 4 個模板的 111 個 `style=""` inline attribute 轉換為具名 CSS class 置入 `<style nonce>` 區塊；動態 `@font-face` 注入改用預埋空 `<style id="custom-font-style" nonce>` + CSSOM `.textContent`；middleware 對非 `/admin` 路徑改用 `'nonce-{nonce}'`。
 
 ### Phase 1：後端 Nonce 基礎設施（`main.py`）
 
@@ -297,10 +312,15 @@ async def add_security_headers(request: Request, call_next):
     nonce = secrets.token_urlsafe(16)
     request.state.csp_nonce = nonce
     response = await call_next(request)
+    # /admin keeps unsafe-inline for Tailwind Play CDN; all other paths use nonce
+    if request.url.path == "/admin":
+        style_src = "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    else:
+        style_src = f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com; "
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net https://cdn.tailwindcss.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        f"{style_src}"
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: blob:; "
         "connect-src 'self'; "
@@ -346,7 +366,8 @@ html = _apply_nonce(_get_html("download.html"), request.state.csp_nonce).replace
 ### Phase 2：HTML 模板標記（4 個 template 檔案）
 
 所有**無 `src` 屬性**的 `<script>` 加上 `nonce="__CSP_NONCE__"`（受 script-src nonce 強制驗證）；  
-`<style>` 標籤同樣加上 `nonce="__CSP_NONCE__"`（style-src 用 unsafe-inline，nonce 屬性為冗餘但無害）；  
+`<style>` 標籤同樣加上 `nonce="__CSP_NONCE__"`（受 style-src nonce 強制驗證）；  
+**所有 `style=""` inline attribute 必須移除**，改為具名 CSS class 置入 `<style nonce>` 區塊（`style-src nonce` 封鎖所有 `style=""` HTML attribute）；  
 **所有 attribute 形式的 inline event handler（`onclick=`、`onchange=` 等）必須移除**，改為在 `<script nonce>` 區塊以 `addEventListener` 綁定（CSP Level 3 的 nonce 只對 `<script>` 元素有效，attribute handler 同樣被封鎖）：
 
 ```html
@@ -374,7 +395,8 @@ html = _apply_nonce(_get_html("download.html"), request.state.csp_nonce).replace
 
 - 瀏覽器 Console 無任何 CSP 違規訊息（`Content Security Policy` 開頭的錯誤）
 - 所有頁面功能正常：admin 4-tab、上傳、Gallery、WebSocket 推播
-- `curl -I http://localhost:8000/admin` 的 `Content-Security-Policy` 響應標頭：`script-src` **不含** `unsafe-inline`、`style-src` **含** `unsafe-inline`（Tailwind CDN 限制）
+- `curl -I http://localhost:8000/` 的 `Content-Security-Policy` 響應標頭：`script-src` **不含** `unsafe-inline`；`style-src` **含** `nonce-*`，**不含** `unsafe-inline`
+- `curl -I http://localhost:8000/admin` 的 `Content-Security-Policy` 響應標頭：`script-src` **不含** `unsafe-inline`；`style-src` **含** `unsafe-inline`（/admin 路徑 Tailwind CDN 允許）
 
 ### 不應採用的替代方案
 
@@ -382,7 +404,7 @@ html = _apply_nonce(_get_html("download.html"), request.state.csp_nonce).replace
 |------|---------|
 | 抽出為外部 `.js` / `.css` 靜態檔 | 需新增 `StaticFiles` mount 且 JS/CSS 與 HTML 緊密耦合，維護負擔大 |
 | CSP Hash（`sha256-...`）靜態計算 | 每次修改 inline script 都須手動重算 hash，與直接編輯 HTML 的開發流程衝突 |
-| `style-src 'nonce-...'`（移除 `unsafe-inline`）| CSP Level 2 規定：`nonce-*` 存在時 `unsafe-inline` 自動失效；Tailwind CDN 動態注入的 style 無法帶 nonce，導致所有 Tailwind 樣式被阻擋，整個 layout 崩潰 |
+| 保留 Tailwind CDN + `style-src 'unsafe-inline'` | CSS injection 風險雖低於 script injection，但 ZAP 仍評為 Medium；已改用移除 Tailwind CDN + nonce 方案消除此警告 |
 | `<meta property="csp-nonce">` 讓 Tailwind CDN 讀取 nonce | Tailwind Play CDN 不支援此機制（測試確認無效），此方案已被排除 |
 
 ---

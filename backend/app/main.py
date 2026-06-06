@@ -432,10 +432,16 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # admin.html uses Tailwind Play CDN which injects <style> at runtime without nonces;
+    # restrict unsafe-inline to the authenticated /admin path only.
+    if request.url.path == "/admin":
+        style_src = "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    else:
+        style_src = f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com; "
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net https://cdn.tailwindcss.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        f"{style_src}"
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: blob:; "
         "connect-src 'self'; "

@@ -112,6 +112,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 密碼雜湊比較改用 `hmac.compare_digest()`（消除 timing side channel，CWE-697）
 - [x] `delete_bg` / `delete_font` 消除 TOCTOU 競態（先 exists() 再 unlink() 改為直接 unlink() + 捕捉 FileNotFoundError，CWE-367）
 - [x] LINE API 呼叫設定 10 秒 timeout（防止 LINE 服務無回應時 worker 永久掛起）
+- [x] **ZAP 弱點掃描全面修補**（ZAP by Checkmarx，2026-06-04 掃描結果）
+  - **CSP `style-src 'unsafe-inline'` 最小化**（Medium/High）：`index.html` 移除 Tailwind Play CDN；4 個模板 111 個 `style=""` inline attribute 全部改為具名 CSS class + `<style nonce>` 區塊；middleware 對公開路徑（`/`、`/login`、`/download/`）改為 `style-src 'nonce-{nonce}'`；`/admin` 路徑保留 `'unsafe-inline'`（Tailwind Play CDN 動態注入 `<style>` 的必要條件，且 admin 為已驗證路徑）
+  - **SRI 缺失修補**（Medium/High）：Tailwind Play CDN 為動態 JIT CDN，回應內容不固定無法計算 SRI hash；從 `index.html` 移除解決根本問題
+  - **Anti-CSRF 表面消除**（Medium/Low）：login form 的 `method="post" action="..."` 屬性移除；登入以 `Content-Type: application/json` axios POST 提交，天然抵抗 CSRF，無需 server-side token
+  - **跨域 JS 來源消除**（Low/Medium）：`index.html` 移除 Tailwind CDN 後，公開頁面不再載入外部 JS（admin.html 保留 Tailwind CDN，後台頁已驗證身分）
+- [x] **admin.html 互動功能回歸修復**（ZAP 修補後遺症）：ZAP 修補將 `style="display:none"` 移至 CSS 規則後，JS 中 `element.style.display = ''` 無法再顯示元素（空字串只清除 inline style，CSS 規則仍生效）；修復：`#gallerySettingsMsg` 的顯示改為 `style.display = 'inline'`；`showUploadPanel()` 的可見性判斷改用 `getComputedStyle(panel).display === 'none'`，且改為 `style.display = 'block'`
 
 ## 工作流程
 
@@ -254,7 +260,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | XSS 防護 | 前端照片卡片 filename 以 HTML escape + `data-*` 屬性 + 事件委派處理；**全頁面所有事件綁定改用 `addEventListener`（已移除所有 `onclick=`、`onchange=` 等 attribute 形式 inline handler）**；CSP Level 3 `script-src 'nonce-*'` 封鎖所有 attribute handler，動態生成元素改用 `data-uid` + delegation |
 | 密碼輸入遮罩 | 改密碼透過頁內 Modal（`type="password"` 欄位）完成，不使用原生 `prompt()`（明碼顯示）|
 | 安全標頭 | `X-Content-Type-Options`、`X-Frame-Options: DENY`、`Referrer-Policy`、`Permissions-Policy`；HTTPS 環境下另加 `Strict-Transport-Security` |
-| Content-Security-Policy | `default-src 'self'`；`script-src` 使用 per-request nonce（`secrets.token_urlsafe(16)`）+ jsdelivr / tailwind CDN 白名單，**無 `unsafe-inline`**（XSS script injection 完全封鎖）；HTML 模板所有 attribute event handler 已移除並改用 `addEventListener`（CSP Level 3 的 nonce 不覆蓋 attribute handler，移除才能讓按鈕在嚴格 CSP 下正常運作）；`style-src` 保留 `'unsafe-inline'`（Tailwind Play CDN 動態注入樣式的必要限制）；`font-src` 白名單 fonts.gstatic.com；`img-src` 允許 `data:` / `blob:`；`connect-src 'self'`；`form-action 'self'`；`frame-ancestors 'none'`；`object-src 'none'`；`base-uri 'self'` |
+| Content-Security-Policy | `default-src 'self'`；`script-src` 使用 per-request nonce（`secrets.token_urlsafe(16)`）+ jsdelivr / tailwind CDN 白名單，**無 `unsafe-inline`**（XSS script injection 完全封鎖）；HTML 模板所有 attribute event handler 已移除並改用 `addEventListener`（CSP Level 3 的 nonce 不覆蓋 attribute handler，移除才能讓按鈕在嚴格 CSP 下正常運作）；`style-src` 按路徑分流：**公開路徑（`/`、`/login`、`/download/`）使用 per-request nonce，無 `unsafe-inline`**（CSS injection 封鎖）；`/admin` 路徑保留 `'unsafe-inline'`（Tailwind Play CDN 動態注入 `<style>` 的必要條件，admin 為已驗證路徑）；`font-src` 白名單 fonts.gstatic.com；`img-src` 允許 `data:` / `blob:`；`connect-src 'self'`；`form-action 'self'`；`frame-ancestors 'none'`；`object-src 'none'`；`base-uri 'self'` |
 | Subresource Integrity | `login.html` / `admin.html` 的 Axios CDN 標籤加上 `integrity="sha384-..."` + 版本固定為 `axios@1.16.1`，瀏覽器驗證 hash 失敗時拒絕執行，防止 CDN 供應鏈攻擊 |
 | 本機限定功能 | `open-incoming-folder` 端點驗證 TCP 連線來源 IP（非 `Host` header，防止 ngrok 環境下的 Host 偽造），非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
@@ -281,7 +287,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.5.8 | **更新**: 2026-06-04（取件頁 ngrok 攔截修正：預覽圖改 fetch() + ngrok-skip-browser-warning header，下載也同步修正）| **狀態**: 生產就緒
+**版本**: 0.5.9 | **更新**: 2026-06-06（ZAP 弱點修補 + 後遺症修復：CSP style-src 公開路徑 nonce 化、Tailwind CDN 從 index.html 移除、login form CSRF 表面消除、111 個 inline style="" 轉換為 CSS class；修復因此產生的 gallery 儲存回饋消失與上傳進度面板不顯示）| **狀態**: 生產就緒
 
 ## 開發中 / 規劃中功能
 
@@ -294,4 +300,5 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | Gallery 管理後台控制 | admin.html | ✅ 完成 | 照片 tab 新增 Gallery 設定卡片：開/關切換（toggle switch）+ 浮水印文字自訂；浮水印變更自動清伺服器快取並以 `wm_version` 使瀏覽器快取失效 |
 | 管理員網頁上傳照片 | admin.html | ✅ 完成 | 照片 tab 新增「上傳照片」按鈕；多選 JPG / PNG；自動安全命名 + 取件碼；即時插卡並廣播 WebSocket |
 | 全域佇列上傳 + 懸浮進度視窗 | admin.html | ✅ 完成 | 2 線程並發全域佇列；第二次點擊繼續排隊不另開 pool；右下角懸浮面板逐檔顯示進度條；完成綠勾 / 失敗紅叉；3 秒自動收起 |
-| CSP `script-src unsafe-inline` 移除 | 全頁面 | ✅ 完成 | Nonce 方案：middleware 生成 per-request nonce，`_apply_nonce()` 注入 4 個 HTML 模板；`script-src` 移除 `unsafe-inline`（改用 nonce，XSS script injection 封鎖）；`style-src` 保留 `unsafe-inline`（Tailwind Play CDN 動態注入 style 的根本限制）；**所有 HTML 模板的 attribute event handler（`onclick=`、`onchange=` 等）已全數移除，改用 `addEventListener`**（CSP Level 3 nonce 不覆蓋 attribute handler，須移除才能讓互動功能在嚴格 CSP 下正常） |
+| CSP `script-src unsafe-inline` 移除；`style-src` 公開路徑 nonce 化 | 全頁面 | ✅ 完成 | Nonce 方案：middleware 生成 per-request nonce，`_apply_nonce()` 注入 4 個 HTML 模板；`script-src` 全路徑移除 `unsafe-inline`；`style-src` 按路徑分流（公開路徑 nonce，`/admin` 保留 `unsafe-inline` 供 Tailwind CDN）；`index.html` 移除 Tailwind Play CDN；4 個模板 111 個 `style=""` inline attribute 全數轉為具名 CSS class；**所有 attribute event handler 已移除，改用 `addEventListener`** |
+| ZAP 弱點掃描修補 | 全頁面 | ✅ 完成 | style-src unsafe-inline 最小化（公開路徑 nonce-only）、SRI 問題（Tailwind CDN 移除）、Anti-CSRF 表面消除（login form method/action 移除）、跨域 JS 來源消除（index.html 無外部 JS） |

@@ -188,34 +188,54 @@
         .d1 { animation-delay: 0.1s; }
         .d2 { animation-delay: 0.3s; }
         .d3 { animation-delay: 0.5s; }
+
+        /* ── Structural layout ── */
+        .frame-corner.tl { top: 0; left: 0; }
+        .frame-wrapper { position: fixed; inset: 20px; pointer-events: none; z-index: 5; }
+        .side-left  { position: fixed; left: 20px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 5; }
+        .side-right { position: fixed; right: 20px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 5; }
+        .dl-card    { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 20px; }
+
+        /* ── Decorative components ── */
+        .deco-top-row { display: flex; align-items: center; gap: 12px; justify-content: center; }
+        .deco-line    { width: 36px; height: 1px; background: rgba(184,197,214,0.45); }
+        .deco-diamond { width: 5px; height: 5px; border: 1px solid rgba(184,197,214,0.6); transform: rotate(45deg); }
+        .dl-actions   { display: flex; flex-direction: column; gap: 12px; }
+        .code-row     { display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .code-label   { font-size: 0.6rem; letter-spacing: 0.2em; color: rgba(184,197,214,0.65); font-weight: 300; }
+        .code-value   { font-family: monospace; font-size: 1.1rem; font-weight: 400; letter-spacing: 0.25em; color: rgba(43,43,43,0.75); user-select: all; }
+
+        /* ── Footer ── */
+        .bottom-label { position: fixed; bottom: 20px; left: 0; right: 0; text-align: center; pointer-events: none; z-index: 10; }
+        .bottom-text  { font-size: 0.52rem; letter-spacing: 0.28em; color: rgba(184,197,214,0.5); font-weight: 300; }
     </style>
 </head>
 <body>
 
 <!-- Frame corner decorations -->
-<div style="position:fixed; inset:20px; pointer-events:none; z-index:5;">
-    <div class="frame-corner" style="top:0;left:0;"></div>
+<div class="frame-wrapper">
+    <div class="frame-corner tl"></div>
     <div class="frame-corner tr"></div>
     <div class="frame-corner bl"></div>
     <div class="frame-corner br"></div>
 </div>
 
 <!-- Vertical side labels -->
-<div style="position:fixed; left:20px; top:50%; transform:translateY(-50%); pointer-events:none; z-index:5;">
+<div class="side-left">
     <span class="vert-label" data-i18n="dl.vertLabel">照片取件 · PHOTO PICKUP</span>
 </div>
-<div style="position:fixed; right:20px; top:50%; transform:translateY(-50%); pointer-events:none; z-index:5;">
+<div class="side-right">
     <span class="vert-label">風嶺 · CCIT</span>
 </div>
 
 <!-- Content -->
-<div style="width:100%; max-width:320px; display:flex; flex-direction:column; gap:20px;">
+<div class="dl-card">
 
     <!-- Top decoration -->
-    <div class="anim d1" style="display:flex; align-items:center; gap:12px; justify-content:center;">
-        <div style="width:36px; height:1px; background:rgba(184,197,214,0.45);"></div>
-        <div style="width:5px; height:5px; border:1px solid rgba(184,197,214,0.6); transform:rotate(45deg);"></div>
-        <div style="width:36px; height:1px; background:rgba(184,197,214,0.45);"></div>
+    <div class="anim d1 deco-top-row">
+        <div class="deco-line"></div>
+        <div class="deco-diamond"></div>
+        <div class="deco-line"></div>
     </div>
 
     <!-- Photo (src set by JS so fetch can add ngrok-skip-browser-warning header) -->
@@ -230,12 +250,10 @@
     </div>
 
     <!-- Code + download -->
-    <div class="anim d3" style="display:flex; flex-direction:column; gap:12px;">
-        <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
-            <span style="font-size:0.6rem; letter-spacing:0.2em; color:rgba(184,197,214,0.65); font-weight:300;"
-                  data-i18n="dl.code">取件碼</span>
-            <span style="font-family:monospace; font-size:1.1rem; font-weight:400; letter-spacing:0.25em;
-                         color:rgba(43,43,43,0.75); user-select:all;">{code}</span>
+    <div class="anim d3 dl-actions">
+        <div class="code-row">
+            <span class="code-label" data-i18n="dl.code">取件碼</span>
+            <span class="code-value">{code}</span>
         </div>
         <button id="btn-dl" class="btn-download" data-i18n="dl.btn">下載照片</button>
         <div id="dl-progress-wrap" class="dl-progress-wrap">
@@ -250,8 +268,8 @@
 </div>
 
 <!-- Bottom label -->
-<div style="position:fixed; bottom:20px; left:0; right:0; text-align:center; pointer-events:none; z-index:10;">
-    <span style="font-size:0.52rem; letter-spacing:0.28em; color:rgba(184,197,214,0.5); font-weight:300;">
+<div class="bottom-label">
+    <span class="bottom-text">
         風嶺拍貼機 · PHOTOBOOTH SYSTEM
     </span>
 </div>

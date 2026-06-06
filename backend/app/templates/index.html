@@ -4,22 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>風嶺拍貼機</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script nonce="__CSP_NONCE__">
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'wa-cream': '#f5f5f0',
-                        'wa-blue':  '#b8c5d6',
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- Placeholder for dynamically loaded custom font @font-face rules -->
+    <style id="custom-font-style" nonce="__CSP_NONCE__"></style>
     <style nonce="__CSP_NONCE__">
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300;400&display=swap');
-        body { font-family: 'Noto Sans JP', sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Noto Sans JP', sans-serif; background: #0c0c16; margin: 0; padding: 0; overflow: hidden; }
 
         /* Background image layer */
         #bg {
@@ -56,6 +46,7 @@
         }
         .frame-corner::before { width: 100%; height: 1px; top: 0; left: 0; }
         .frame-corner::after  { width: 1px; height: 100%; top: 0; left: 0; }
+        .frame-corner.tl { top: 0; left: 0; }
         .frame-corner.tr { transform: rotate(90deg);  top: 0; right: 0; }
         .frame-corner.bl { transform: rotate(270deg); bottom: 0; left: 0; }
         .frame-corner.br { transform: rotate(180deg); bottom: 0; right: 0; }
@@ -82,6 +73,7 @@
             border-radius: 2px;
             transition: all 0.3s ease;
             text-align: center;
+            text-decoration: none;
         }
         .btn-ghost:hover {
             border-color: rgba(184, 197, 214, 0.65);
@@ -90,7 +82,6 @@
             transform: translateY(-2px);
         }
 
-        /* Language toggle */
         /* Entrance animation */
         @keyframes fadeUp {
             from { opacity: 0; transform: translateY(14px); }
@@ -275,9 +266,38 @@
         @media print {
             #gallery-section { display: none !important; }
         }
+
+        /* ── Hero layout ── */
+        .hero-frame  { position: absolute; top: 1.75rem; right: 1.75rem; bottom: 1.75rem; left: 1.75rem; pointer-events: none; z-index: 5; }
+        .hero-side-l { position: absolute; left: 1.75rem; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 5; }
+        .hero-side-r { position: absolute; right: 1.75rem; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 5; }
+        .hero-content { position: relative; z-index: 10; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 4rem; user-select: none; }
+        .hero-deco-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2.5rem; }
+        .hero-brand   { text-align: center; }
+        .hero-divider { display: flex; flex-direction: column; align-items: center; margin: 2rem 0; gap: 0; }
+        .hero-bottom  { position: absolute; bottom: 1.75rem; left: 0; right: 0; text-align: center; pointer-events: none; z-index: 10; }
+
+        /* ── Decorative elements ── */
+        .deco-line-40    { width: 40px; height: 1px; background: rgba(184,197,214,0.25); }
+        .deco-diamond-5  { width: 5px; height: 5px; border: 1px solid rgba(184,197,214,0.35); transform: rotate(45deg); }
+        .deco-vline-top  { width: 1px; height: 32px; background: linear-gradient(to bottom, rgba(184,197,214,0.25), rgba(184,197,214,0.06)); }
+        .deco-vline-bot  { width: 1px; height: 32px; background: linear-gradient(to bottom, rgba(184,197,214,0.06), transparent); }
+
+        /* ── Text elements ── */
+        .idx-title   { font-size: clamp(3.2rem, 9vw, 6.5rem); font-weight: 100; letter-spacing: 0.38em; text-indent: 0.38em; line-height: 1; color: #f5f5f0; }
+        .idx-subtitle { font-size: clamp(1rem, 2.5vw, 1.6rem); font-weight: 200; letter-spacing: 0.6em; text-indent: 0.6em; margin-top: 0.55rem; color: rgba(245,245,240,0.52); }
+        .idx-middle  { font-size: 0.58rem; letter-spacing: 0.38em; color: rgba(184,197,214,0.38); font-weight: 300; margin: 10px 0; }
+        .hero-footer-text { font-size: 0.58rem; letter-spacing: 0.28em; color: rgba(184,197,214,0.22); font-weight: 300; }
+
+        /* ── Gallery header text ── */
+        .gallery-sub { font-size: 0.5rem; letter-spacing: 0.42em; color: rgba(184,197,214,0.3); font-weight: 300; margin-bottom: 5px; }
+        .gallery-title { font-size: 1.3rem; font-weight: 100; letter-spacing: 0.32em; color: rgba(245,245,240,0.75); }
+        .gallery-deco-line { width: 24px; height: 1px; background: rgba(184,197,214,0.18); }
+        .gallery-deco-diamond { width: 4px; height: 4px; border: 1px solid rgba(184,197,214,0.28); transform: rotate(45deg); }
+        .gallery-deco-row { display: flex; align-items: center; gap: 8px; }
     </style>
 </head>
-<body style="background:#0c0c16; margin:0; padding:0; overflow:hidden;">
+<body>
 
 <div id="scroll-root">
 
@@ -288,62 +308,42 @@
         <div id="bg-overlay"></div>
 
         <!-- Frame corner decorations -->
-        <div class="absolute inset-7 pointer-events-none" style="z-index:5;">
-            <div class="frame-corner" style="top:0;left:0;"></div>
+        <div class="hero-frame">
+            <div class="frame-corner tl"></div>
             <div class="frame-corner tr"></div>
             <div class="frame-corner bl"></div>
             <div class="frame-corner br"></div>
         </div>
 
         <!-- Vertical side labels -->
-        <div class="absolute left-7 top-1/2 -translate-y-1/2 pointer-events-none" style="z-index:5;">
+        <div class="hero-side-l">
             <span class="vert-label">拍貼機 · PHOTOBOOTH</span>
         </div>
-        <div class="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none" style="z-index:5;">
+        <div class="hero-side-r">
             <span class="vert-label">風嶺 · CCIT</span>
         </div>
 
         <!-- Main content -->
-        <div class="relative z-10 h-full flex flex-col items-center justify-center px-16 select-none">
+        <div class="hero-content">
 
             <!-- Top decorative rule -->
-            <div class="anim d1 flex items-center gap-3 mb-10">
-                <div style="width:40px;height:1px;background:rgba(184,197,214,0.25);"></div>
-                <div style="width:5px;height:5px;border:1px solid rgba(184,197,214,0.35);transform:rotate(45deg);"></div>
-                <div style="width:40px;height:1px;background:rgba(184,197,214,0.25);"></div>
+            <div class="anim d1 hero-deco-row">
+                <div class="deco-line-40"></div>
+                <div class="deco-diamond-5"></div>
+                <div class="deco-line-40"></div>
             </div>
 
             <!-- Brand -->
-            <div class="anim d2 text-center">
-                <div id="idx-main-title" style="
-                    font-size: clamp(3.2rem, 9vw, 6.5rem);
-                    font-weight: 100;
-                    letter-spacing: 0.38em;
-                    text-indent: 0.38em;
-                    line-height: 1;
-                    color: #f5f5f0;
-                ">風嶺</div>
-                <div id="idx-subtitle" style="
-                    font-size: clamp(1rem, 2.5vw, 1.6rem);
-                    font-weight: 200;
-                    letter-spacing: 0.6em;
-                    text-indent: 0.6em;
-                    margin-top: 0.55rem;
-                    color: rgba(245,245,240,0.52);
-                ">拍貼機</div>
+            <div class="anim d2 hero-brand">
+                <div id="idx-main-title" class="idx-title">風嶺</div>
+                <div id="idx-subtitle" class="idx-subtitle">拍貼機</div>
             </div>
 
             <!-- Middle divider -->
-            <div class="anim d3 flex flex-col items-center mt-8 mb-8 gap-0">
-                <div style="width:1px;height:32px;background:linear-gradient(to bottom,rgba(184,197,214,0.25),rgba(184,197,214,0.06));"></div>
-                <div id="idx-middle-text" style="
-                    font-size: 0.58rem;
-                    letter-spacing: 0.38em;
-                    color: rgba(184,197,214,0.38);
-                    font-weight: 300;
-                    margin: 10px 0;
-                ">CCIT · PHOTO STUDIO</div>
-                <div style="width:1px;height:32px;background:linear-gradient(to bottom,rgba(184,197,214,0.06),transparent);"></div>
+            <div class="anim d3 hero-divider">
+                <div class="deco-vline-top"></div>
+                <div id="idx-middle-text" class="idx-middle">CCIT · PHOTO STUDIO</div>
+                <div class="deco-vline-bot"></div>
             </div>
 
             <!-- Action button -->
@@ -354,8 +354,8 @@
         </div>
 
         <!-- Bottom label -->
-        <div class="absolute bottom-7 left-0 right-0 text-center pointer-events-none" style="z-index:10;">
-            <span style="font-size:0.58rem;letter-spacing:0.28em;color:rgba(184,197,214,0.22);font-weight:300;">
+        <div class="hero-bottom">
+            <span class="hero-footer-text">
                 風嶺拍貼機 · PHOTOBOOTH SYSTEM
             </span>
         </div>
@@ -376,13 +376,12 @@
         <!-- Header -->
         <div id="gallery-header">
             <div>
-                <div style="font-size:0.5rem;letter-spacing:0.42em;color:rgba(184,197,214,0.3);font-weight:300;margin-bottom:5px;">PHOTO GALLERY</div>
-                <div style="font-size:1.3rem;font-weight:100;letter-spacing:0.32em;color:rgba(245,245,240,0.75);"
-                     data-i18n="idx.galleryTitle">照片集</div>
+                <div class="gallery-sub">PHOTO GALLERY</div>
+                <div class="gallery-title" data-i18n="idx.galleryTitle">照片集</div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <div style="width:24px;height:1px;background:rgba(184,197,214,0.18);"></div>
-                <div style="width:4px;height:4px;border:1px solid rgba(184,197,214,0.28);transform:rotate(45deg);"></div>
+            <div class="gallery-deco-row">
+                <div class="gallery-deco-line"></div>
+                <div class="gallery-deco-diamond"></div>
             </div>
         </div>
 
@@ -474,9 +473,8 @@ function applyFont(data) {
     const { font, font_source, font_file, font_format } = data;
     if (!font) return;
     if (font_source === 'custom' && font_file) {
-        const style = document.createElement('style');
-        style.textContent = "@font-face{font-family:'" + font + "';src:url('" + font_file + "') format('" + font_format + "');font-display:swap;}";
-        document.head.appendChild(style);
+        document.getElementById('custom-font-style').textContent =
+            "@font-face{font-family:'" + font + "';src:url('" + font_file + "') format('" + font_format + "');font-display:swap;}";
         document.body.style.fontFamily = "'" + font + "', sans-serif";
     } else if (font_source === 'google' && font !== 'Noto Sans JP') {
         const query = GOOGLE_FONT_QUERY[font];
