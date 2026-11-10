@@ -8,7 +8,7 @@
 
 | 層次 | 技術 |
 |------|------|
-| Runtime | Python 3.14（Windows 內嵌，位於 `python/`）|
+| Runtime | Python 3.14（Linux 系統 Python；Windows 可使用內嵌 Python）|
 | Web 框架 | FastAPI + Uvicorn |
 | 即時通訊 | WebSocket（FastAPI 原生）|
 | 檔案監聽 | Watchdog |
@@ -20,6 +20,17 @@
 ---
 
 ## 執行專案
+
+```bash
+# Linux — 首次執行會建立 .venv 並安裝依賴
+cd /path/to/photobooth-core
+./start.sh
+
+# Linux 開發模式（自動重載 + 開放 API 文件）
+source .venv/bin/activate
+cd backend
+ENABLE_API_DOCS=true RELOAD_ADMIN_HTML=true python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
 ```powershell
 # Windows — 使用內嵌 Python
@@ -39,8 +50,8 @@ $env:LINE_CHANNEL_ACCESS_TOKEN="your_line_token"
 ```
 
 語法檢查（不執行應用，只做靜態分析）：
-```powershell
-..\python\python.exe -c "import ast; ast.parse(open('app/main.py', encoding='utf-8').read()); print('OK')"
+```bash
+python -c "import ast; ast.parse(open('app/main.py', encoding='utf-8').read()); print('OK')"
 ```
 
 ---
@@ -198,12 +209,12 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**移除 `protect_static_incoming` middleware — 此 middleware 是防止「/api/gallery 枚舉檔名 → /static/incoming/ 直接下載全解析度照片」攻擊鏈的關鍵；移除後攻擊者不需任何取件碼即可取得所有照片原檔
 - **不得**在 `_get_client_ip()` 恢復無條件信任 `X-Forwarded-For` 的寫法 — 此 header 可被任何用戶端偽造；必須透過 `TRUSTED_PROXY_IPS` 環境變數明確設定可信代理後才信任；否則攻擊者可輪換假 IP 規避所有速率限制
 - **不得**在 `login()` 端點移除 `_check_login_rate_limit(client_ip)` 呼叫 — 帳號維度的鎖定（`is_account_locked`）無法防止帳號噴灑攻擊（攻擊者輪流嘗試大量帳號各試 4 次，永遠不觸發鎖定）；IP 維度速率限制是必要的補充防線
+- **不得**恢復 `admin/admin` 預設密碼 — 新安裝必須使用 `PB_INITIAL_ADMIN_PASSWORD`（至少 12 字元）或由 `secrets.token_urlsafe()` 產生一次性密碼；舊的 `admin/admin` 帳號在啟動時必須輪替
 - **不得**在 `open_incoming_folder()` 恢復使用 `Host` header 做本機檢查 — `Host` header 是用戶端可控制的 HTTP 標頭；透過 ngrok 的請求可偽造 `Host: localhost` 通過檢查；必須改用 `request.client.host`（TCP 連線來源 IP）
 - **不得**在 `script-src` 中重新加入 `'unsafe-inline'` — nonce 已替代 `unsafe-inline`，重新加入使 XSS 攻擊者可注入任意 script；`style-src` 的 `'unsafe-inline'` 僅允許存在於 `/admin` 路徑（Tailwind Play CDN 動態注入 `<style>` 的必要條件），**不得**擴展到 `/`、`/login`、`/download/` 等公開路徑
 - **不得**在任何 HTML 模板中新增無 `nonce` 屬性的 `<script>` 標籤（無 `src`）— 缺少 nonce 的 inline script 會被 `script-src 'nonce-...'` 阻擋，造成 JS 功能中斷
 - **不得**對 `_apply_nonce(html, nonce)` 傳入靜態或可預測的 nonce 字串 — nonce 必須來自 `request.state.csp_nonce`（每請求由 `secrets.token_urlsafe(16)` 生成），重用或可預測的 nonce 使 CSP nonce 保護失效
 - **不得**在 HTML 模板中使用 attribute 形式的 inline event handler（`onclick="…"`、`onchange="…"`、`onmouseover="…"` 等）— CSP Level 3 `script-src 'nonce-*'` 會封鎖所有 attribute event handler（nonce 對 `<script>` 元素有效，對 HTML attribute 無效）；所有事件綁定必須在 `<script nonce="__CSP_NONCE__">` 區塊內以 `addEventListener` 完成；動態生成的元素（如重試按鈕）改用 `data-*` 屬性 + 事件委派（event delegation）
-- **不得**在 `download.html` 照片區將 `<canvas id="photo-canvas">` 改回 `<img src="...">` — 同 Gallery 的防下載設計；Canvas 不暴露圖片 URL，配合 `.photo-overlay` 透明覆蓋層攔截右鍵/拖曳/長按
 - **不得**將 `download.html` 下載按鈕改回 `<a href="/api/photo/{code}?dl=1">` — 需透過 JS handler（Web Share API 優先，fallback 為 blob URL）才能在支援 Web Share 的行動瀏覽器（iOS Safari 15+ / Android Chrome 86+）觸發分享選單，讓用戶直接存入相簿；改回 `<a>` 會導致行動端只能下載至檔案管理員
 - **不得**將 `/api/photo/{code}/thumb` 端點改為回傳公開縮圖（`_generate_public_thumbnail`）— 取件頁用戶持有合法取件碼，預覽不應有浮水印；公開縮圖（含浮水印）僅供 Gallery 展示頁；兩個端點的快取路徑分別為 `{filename}.thumb.webp`（無浮水印）和 `pub_{md5}.webp`（含浮水印）
 - **不得**移除 `window.matchMedia('(pointer: coarse)').matches` 的 Web Share 前置判斷 — Chrome on Windows 11 支援 `navigator.canShare`，若只判斷 `canShare` 桌機用戶點下載會跳出分享選單而非直接下載；`pointer: coarse` 才是可靠的觸控設備判斷
@@ -212,7 +223,6 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**將 `serve_photo_thumb` 改回固定回傳 WebP — iOS 13 及以下的 Safari 不支援 WebP，`Accept` header 中不含 `image/webp`；移除判斷後舊版 iOS 完全無法顯示取件頁照片；必須保留 `if "image/webp" in accept` 邏輯以自動降格為 JPEG
 - **不得**在 `download.html` 的預覽圖載入改回直接 `<img src="/api/photo/{code}/thumb">` — ngrok free tier 對 `<img>` 子資源請求可能回傳 HTML 警告頁，觸發 `onerror`；必須改用 `fetch()` 並帶 `ngrok-skip-browser-warning: 1` header，收到回應後確認 content-type 以 `image/` 開頭才建立 blob URL 並設為 img.src
 - **不得**在 `delete_incoming` / `clear_incoming` 只清除 `.thumb.webp` — 現在 `serve_photo_thumb` 也會產生 `.thumb.jpg`；兩種縮圖快取必須一起清除，否則舊縮圖殘留 `storage/thumbs/`
-- **不得**在 `download.html` Canvas 載入改回使用 `/api/photo/{code}`（全尺寸原圖）— Canvas 僅作預覽，應使用 `/api/photo/{code}/thumb`（480px WebP），全尺寸原圖保留給下載按鈕，避免預覽就傳輸大量頻寬
 - **不得**在 HTML 模板中使用 `style=""` inline attribute — `style-src 'nonce-*'` 封鎖所有 `style=""` HTML attribute；所有樣式必須以具名 CSS class 形式置入 `<style nonce="__CSP_NONCE__">` 區塊；CSSOM API（`element.style.property = value`）不受此限，可安全使用
 - **不得**在任何 HTML 模板新增無 `nonce="__CSP_NONCE__"` 屬性的 `<style>` 元素 — 缺少 nonce 的 `<style>` 會被 `style-src 'nonce-*'` 封鎖，造成樣式失效；動態注入 CSS 改用預埋空 `<style id="..." nonce="__CSP_NONCE__">` + CSSOM `.textContent` 方式
 - **不得**將原本 `style="display:none"` inline attribute 移至 CSS 規則後，仍以 `element.style.display = ''`（空字串）顯示元素 — 空字串只清除 inline style，CSS 規則 `display:none` 仍生效，元素永遠不可見；正確寫法：`element.style.display = 'block'`（或 `'inline'`、`'flex'` 視元素而定）；同理，以 `element.style.display === 'none'` 判斷元素可見性時，若初始狀態由 CSS 而非 inline 控制，應改用 `getComputedStyle(element).display === 'none'`

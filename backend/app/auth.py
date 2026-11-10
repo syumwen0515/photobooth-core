@@ -2,10 +2,15 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+
+from app.config import INITIAL_ADMIN_PASSWORD, INITIAL_ADMIN_PASSWORD_MIN_LENGTH
+
+logger = logging.getLogger(__name__)
 
 _ACCOUNTS_FILE: Optional[Path] = None
 _SESSION_TTL_HOURS = 24 * 7  # 7 天
@@ -81,14 +86,35 @@ def _save_accounts(accounts: list) -> None:
 
 
 def _ensure_default_account() -> None:
-    if not _load_accounts():
-        salt = secrets.token_hex(16)
-        _save_accounts([{
-            "username": "admin",
-            "password_hash": _hash_password_pbkdf2("admin", salt),
-            "salt": salt,
-            "algo": "pbkdf2",
-        }])
+    accounts = _load_accounts()
+    admin_account = next((account for account in accounts if account["username"] == "admin"), None)
+    if accounts and not (admin_account and _verify_password("admin", admin_account)):
+        return
+
+    password = INITIAL_ADMIN_PASSWORD
+    generated = not password
+    if generated:
+        password = secrets.token_urlsafe(18)
+    elif len(password) < INITIAL_ADMIN_PASSWORD_MIN_LENGTH:
+        raise ValueError(
+            f"PB_INITIAL_ADMIN_PASSWORD 至少需要 {INITIAL_ADMIN_PASSWORD_MIN_LENGTH} 個字元"
+        )
+
+    salt = secrets.token_hex(16)
+    new_admin = {
+        "username": "admin",
+        "password_hash": _hash_password_pbkdf2(password, salt),
+        "salt": salt,
+        "algo": "pbkdf2",
+    }
+    if accounts:
+        accounts = [new_admin if account["username"] == "admin" else account for account in accounts]
+    else:
+        accounts = [new_admin]
+    _save_accounts(accounts)
+
+    if generated:
+        logger.warning("初次啟動管理員密碼（請立即保存）：%s", password)
 
 
 # ── 登入失敗鎖定 ─────────────────────────────────────────────
@@ -158,6 +184,12 @@ def destroy_session(token: str) -> None:
     _sessions.pop(token, None)
 
 
+def destroy_user_sessions(username: str) -> None:
+    for token, session in list(_sessions.items()):
+        if session["username"] == username:
+            del _sessions[token]
+
+
 def cleanup_expired_sessions() -> int:
     """清理過期 session，回傳清除數量。"""
     cutoff = datetime.now() - timedelta(hours=_SESSION_TTL_HOURS)
@@ -200,6 +232,7 @@ def delete_account(username: str) -> tuple[bool, str]:
     if len(new_accounts) == len(accounts):
         return False, "帳號不存在"
     _save_accounts(new_accounts)
+    destroy_user_sessions(username)
     return True, "帳號已刪除"
 
 
@@ -213,5 +246,6 @@ def change_password(username: str, new_password: str) -> tuple[bool, str]:
             acc["password_hash"] = _hash_password_pbkdf2(new_password, acc["salt"])
             acc["algo"] = "pbkdf2"
             _save_accounts(accounts)
+            destroy_user_sessions(username)
             return True, "密碼已更新"
     return False, "帳號不存在"

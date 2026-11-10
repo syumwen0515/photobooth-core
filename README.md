@@ -32,8 +32,9 @@ photobooth-core/
 │       ├── ngrok_config.json
 │       ├── photo_codes.json
 │       └── index_text.json        # 首頁文字設定（按需生成）
-├── python/                        # 內嵌 Python 執行環境
-├── first_run_setup.bat            # 首次安裝：設定 pip + 安裝依賴 + 可選清除舊資料
+├── python/                        # Windows 內嵌 Python（不進版控）
+├── start.sh                       # Linux 啟動（首次執行會建立 venv 並安裝依賴）
+├── first_run_setup.bat            # Windows 首次安裝
 ├── start.bat
 ├── AGENTS.md                      # AI 代理開發指引
 └── README.md
@@ -41,32 +42,43 @@ photobooth-core/
 
 ## 快速開始
 
-### 首次安裝（Windows 嵌入式 Python）
+### Linux
+先安裝 Python 3、venv 與 pip。Ubuntu / Debian 可執行：
+```bash
+sudo apt update
+sudo apt install python3 python3-venv python3-pip
+```
+
+在專案根目錄執行：
+```bash
+chmod +x start.sh
+./start.sh
+```
+首次執行會在 `.venv/` 建立虛擬環境並安裝依賴，之後再次執行會直接啟動。
+
+### Windows
+首次安裝使用內嵌 Python：
 ```bat
 first_run_setup.bat
 ```
-會自動啟用 pip、安裝所有依賴，並詢問是否清除前次資料（適用於移到新電腦時）。
+首次啟動會產生隨機管理員密碼並輸出於伺服器日誌；也可在啟動前設定至少 12 字元的 `PB_INITIAL_ADMIN_PASSWORD`。完成後執行 `start.bat` 啟動伺服器。
 
-### 安裝依賴（一般環境）
+### 手動安裝 / 開發模式
 ```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r backend/requirements.txt
+
+# 開發模式（Linux / macOS）
 cd backend
-pip install -r requirements.txt
+ENABLE_API_DOCS=true python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 生產模式可改為不帶 --reload
 ```
-
-### 運行伺服器
-```bash
-# 開發模式（自動重載，同時開放 API 文件）
-ENABLE_API_DOCS=true uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# 生產模式
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-或直接執行 `start.bat`。
 
 ### 訪問應用
 - **公開首頁**: http://localhost:8000
-- **管理後台**: http://localhost:8000/admin（預設帳密：`admin / admin`，請立即修改）
+- **管理後台**: http://localhost:8000/admin（帳號 `admin`；初始密碼會輸出於首次啟動日誌，或由 `PB_INITIAL_ADMIN_PASSWORD` 指定）
 - **健康檢查**: http://localhost:8000/api
 - **API 文件**: 預設關閉，需設定 `ENABLE_API_DOCS=true` 後訪問 `/api/docs`
 
@@ -93,8 +105,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] **全頁面多語系擴展**（login / index / download 全部支援 zh-TW / en；自動偵測 `navigator.language`，`zh` 開頭→繁中，其餘→英文；`localStorage('pb-lang')` 跨頁持久化，admin.html 手動切換後其他頁面跟隨）
 - [x] login.html / download.html UI 改版（移除 Tailwind CDN；統一 frame-corner / vertical-label 視覺語言）
 - [x] 公開照片集 Gallery（首頁向下捲動切換；scroll-snap 兩區塊設計）
-- [x] 照片防下載保護 — Gallery（Canvas 渲染 + blob URL 立即撤銷 + contextmenu/drag/鍵盤快捷鍵攔截 + CSS print 隱藏）
-- [x] 照片防下載保護 — 取件頁面（同 Gallery：Canvas + 透明 overlay 攔截右鍵/長按/拖曳，無法從頁面直接另存；**下載按鈕優先使用 Web Share API**，iOS 15+ / Android 86+ 用戶可直接從分享選單「存入相簿」；不支援時 fallback 為 blob URL 下載；無 Web Share 的手機用戶顯示引導提示）
+- [x] 公開 Gallery 縮圖保護（Canvas + 浮水印 + 480px 低解析度；前端攔截只降低一般另存便利，不能阻止使用者擷取已傳至瀏覽器的資料）
+- [x] 取件頁下載流程（`<img>` 顯示縮圖，fetch 下載原圖；**下載按鈕優先使用 Web Share API**，iOS 15+ / Android 86+ 可直接分享或存入相簿；不支援時使用 blob URL 下載）
 - [x] 取件頁下載進度條（`ReadableStream` 逐塊讀取；有 `Content-Length` 顯示 0–100% 進度條；無則顯示 shimmer 動畫 + 已接收 bytes；完成後自動淡出；**Web Share API 僅在觸控設備觸發**，桌機直接下載不跳分享視窗）
 - [x] 取件頁照片顯示修正（`<img>` + WebP/JPEG 自動切換 + ngrok 攔截繞過）：`<img>` 取代 canvas + blob URL；`/api/photo/{code}/thumb` 依 `Accept` header 自動回 WebP 或 JPEG；預覽圖改用 `fetch()` 載入並帶 `ngrok-skip-browser-warning: 1` header（ngrok free tier 對子資源也可能回 HTML 警告頁），下載按鈕同步修正；`-webkit-touch-callout: none` 阻止 iOS 長按儲存
 - [x] 公開縮圖浮水印（Server-side Pillow 斜向重複浮水印；快取以 MD5 hash 命名，避免中文檔名相容問題）
@@ -106,7 +118,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [x] 取件頁面模板快取（`download.html` 改用 `_get_html()` 記憶體快取，不再逐次讀磁碟）
 - [x] 浮水印字型備援強化（`_wm_font()` 新增 `msyh.ttc` / `simsun.ttc`，確保無日文語言包環境仍可渲染中文）
 - [x] IP 速率限制記憶體清理（`_session_cleanup_task` 每小時一併清理 `_code_request_log` 孤兒鍵）
-- [x] Login form 修補 CWE-598（加 `method="post"`，密碼不再可能出現於 URL query string）
+- [x] 登入以 Axios `application/json` POST 提交；表單不使用原生 `method` / `action`
 - [x] CSP header 全面強化（補齊 `default-src`、`script-src`、`style-src`、`font-src`、`img-src`、`connect-src`、`form-action`，消除 ZAP 的 4 個 Medium CSP 警告）
 - [x] Axios CDN 加 SRI（`integrity="sha384-..."` + 固定版本 `axios@1.16.1`，防止 CDN 供應鏈攻擊）
 - [x] 密碼雜湊比較改用 `hmac.compare_digest()`（消除 timing side channel，CWE-697）
@@ -178,7 +190,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 方法 | 端點 | 說明 |
 |------|------|------|
 | GET | `/api/admin/incoming` | 照片列表（含取件碼）|
-| POST | `/api/admin/upload-incoming` | 上傳照片到 incoming 資料夾（支援多檔，JPG / PNG，最大 50 MB）|
+| POST | `/api/admin/upload-incoming` | 單一請求上傳一張照片（JPG / PNG，最大 50 MB）；管理介面支援多選並逐檔送出 |
 | GET | `/api/admin/incoming/thumb/{filename}` | 取得縮圖（480px WebP，有快取）|
 | DELETE | `/api/admin/incoming/{filename}` | 刪除單張 |
 | DELETE | `/api/admin/incoming` | 清除全部 |
@@ -264,7 +276,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | Subresource Integrity | `login.html` / `admin.html` 的 Axios CDN 標籤加上 `integrity="sha384-..."` + 版本固定為 `axios@1.16.1`，瀏覽器驗證 hash 失敗時拒絕執行，防止 CDN 供應鏈攻擊 |
 | 本機限定功能 | `open-incoming-folder` 端點驗證 TCP 連線來源 IP（非 `Host` header，防止 ngrok 環境下的 Host 偽造），非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
-| 公開照片防下載 | **Gallery**：Canvas 渲染（不暴露 img src）+ blob URL 使用後立即撤銷 + 右鍵/拖曳/Ctrl+S 攔截；即使 DevTools Network tab 取得的也只是含浮水印的 480px 縮圖。**取件頁面**：同 Canvas + overlay 設計，無法右鍵/長按另存；下載按鈕優先使用 Web Share API（iOS 15+ / Android 86+），讓用戶直接從分享選單「存入相簿」，舊版或桌機 fallback 為 blob URL 下載 |
+| 公開照片存取 | **Gallery**：公開內容僅有 480px 浮水印縮圖；Canvas 與右鍵/拖曳攔截只能降低一般另存便利，不能阻止使用者擷取瀏覽器已取得的資料。原圖需有效取件碼或管理員 session。**取件頁面**：`<img>` 顯示縮圖；下載按鈕優先使用 Web Share API（iOS 15+ / Android 86+），不支援時以 blob URL 下載 |
 | 縮圖快取命名 | 公開縮圖以 `MD5(filename)` 命名（`pub_<hash>.webp`），避免中文/特殊字元檔名在 Windows 路徑比對不一致；Pillow 讀圖改用 BytesIO，避免 Unicode path 相容問題 |
 | 取件碼生成 | 使用 Python `secrets.choice()`（CSPRNG）生成 6 碼取件碼，確保攻擊者無法從已知碼推算後續碼；`random.choices()`（梅森旋轉，非密碼學安全）已移除 |
 | 敏感 Token 環境變數注入 | `NGROK_AUTHTOKEN`、`LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN` 均支援環境變數覆蓋，優先序高於 JSON 落盤設定；建議展場生產部署時以環境變數注入，不將 Token 存入 `storage/` 明文檔 |
@@ -287,7 +299,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-**版本**: 0.5.9 | **更新**: 2026-06-06（ZAP 弱點修補 + 後遺症修復：CSP style-src 公開路徑 nonce 化、Tailwind CDN 從 index.html 移除、login form CSRF 表面消除、111 個 inline style="" 轉換為 CSS class；修復因此產生的 gallery 儲存回饋消失與上傳進度面板不顯示）| **狀態**: 生產就緒
+**版本**: 0.5.10 | **更新**: 2026-11-08（Linux 啟動、初始化管理員密碼、Gallery 停用端點封鎖、帳號 session 撤銷與回歸測試）| **狀態**: 上線前驗證中
 
 ## 開發中 / 規劃中功能
 
@@ -296,7 +308,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 深/淺色模式切換 | admin.html | ✅ 完成 | CSS variables + `data-theme`，header 切換按鈕 |
 | 深/淺色模式切換 | login / index | 🚧 規劃中 | 尚未擴展 |
 | 多語系（i18n）| admin.html | ✅ 完成 | `TRANSLATIONS` 物件 + `data-i18n`，支援 zh-TW / en |
-| 多語系（i18n）| login / index / download | ✅ 完成 | 右上角語言切換按鈕；TRANSLATIONS + applyLang + data-i18n；偏好跨頁持久化 |
+| 多語系（i18n）| login / index / download | ✅ 完成 | 自動偵測瀏覽器語言；TRANSLATIONS + applyLang + data-i18n；偏好跨頁持久化 |
 | Gallery 管理後台控制 | admin.html | ✅ 完成 | 照片 tab 新增 Gallery 設定卡片：開/關切換（toggle switch）+ 浮水印文字自訂；浮水印變更自動清伺服器快取並以 `wm_version` 使瀏覽器快取失效 |
 | 管理員網頁上傳照片 | admin.html | ✅ 完成 | 照片 tab 新增「上傳照片」按鈕；多選 JPG / PNG；自動安全命名 + 取件碼；即時插卡並廣播 WebSocket |
 | 全域佇列上傳 + 懸浮進度視窗 | admin.html | ✅ 完成 | 2 線程並發全域佇列；第二次點擊繼續排隊不另開 pool；右下角懸浮面板逐檔顯示進度條；完成綠勾 / 失敗紅叉；3 秒自動收起 |

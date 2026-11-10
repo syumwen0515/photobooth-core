@@ -7,11 +7,36 @@ from watchdog.events import FileSystemEventHandler, FileCreatedEvent
 
 from app.config import (
     SUPPORTED_IMAGE_FORMATS,
-    WATCHER_INITIAL_DELAY,
+    WATCHER_STABILITY_INTERVAL,
+    WATCHER_STABILITY_CHECKS,
+    WATCHER_STABILITY_TIMEOUT,
     WS_MESSAGE_TYPE_NEW_INCOMING,
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _wait_for_stable_file(filepath: Path) -> bool:
+    deadline = time.monotonic() + WATCHER_STABILITY_TIMEOUT
+    previous_size = None
+    stable_checks = 0
+
+    while time.monotonic() < deadline:
+        await asyncio.sleep(WATCHER_STABILITY_INTERVAL)
+        try:
+            current_size = filepath.stat().st_size
+        except OSError:
+            return False
+
+        if current_size == previous_size:
+            stable_checks += 1
+            if stable_checks >= WATCHER_STABILITY_CHECKS:
+                return True
+        else:
+            stable_checks = 0
+        previous_size = current_size
+
+    return False
 
 
 class PhotoHandler(FileSystemEventHandler):
@@ -35,18 +60,21 @@ class PhotoHandler(FileSystemEventHandler):
         logger.info(f"📸 偵測到新照片: {filename}")
 
         asyncio.run_coroutine_threadsafe(
-            self._delayed_broadcast(filename),
+            self._delayed_broadcast(str(filepath)),
             self.loop,
         )
 
     async def _delayed_broadcast(self, filename: str) -> None:
-        await asyncio.sleep(WATCHER_INITIAL_DELAY)
+        filepath = Path(filename)
+        if not await _wait_for_stable_file(filepath):
+            logger.warning(f"照片檔案未完成寫入或已消失，略過推播: {filepath.name}")
+            return
         try:
-            code = self.code_assigner(filename) if self.code_assigner else None
+            code = self.code_assigner(filepath.name) if self.code_assigner else None
             await self.manager.broadcast({
                 "type": WS_MESSAGE_TYPE_NEW_INCOMING,
-                "filename": filename,
-                "url": f"/static/incoming/{filename}",
+                "filename": filepath.name,
+                "url": f"/static/incoming/{filepath.name}",
                 "code": code,
                 "timestamp": time.time(),
             })

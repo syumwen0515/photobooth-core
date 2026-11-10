@@ -8,7 +8,7 @@ from pathlib import Path
 
 # 應用程式設定
 APP_TITLE = "智能拍貼機邊緣端系統"
-APP_VERSION = "0.4.9"
+APP_VERSION = "0.5.10"
 APP_DESCRIPTION = "支援 WebSocket 即時預覽、取件碼系統、LINE BOT 整合的展場級拍貼系統"
 
 # 目錄路徑配置
@@ -31,7 +31,9 @@ WS_MESSAGE_TYPE_NEW_INCOMING = "new_incoming"
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 # 監聽服務設定
-WATCHER_INITIAL_DELAY = 0.5  # 檔案寫入完成後的等待時間（秒）
+WATCHER_STABILITY_INTERVAL = 0.5  # 檢查照片檔案大小的間隔（秒）
+WATCHER_STABILITY_CHECKS = 3  # 大小連續不變的檢查次數
+WATCHER_STABILITY_TIMEOUT = 120.0  # 等待檔案寫入完成的最長時間（秒）
 
 # CORS 配置
 # 若未設定環境變數則不允許任何跨來源，請透過 CORS_ORIGINS 指定允許的來源
@@ -56,6 +58,8 @@ STATIC_BG_ROUTE = "/static/bg"
 BG_DIR = STORAGE_DIR / "bg"
 ACCOUNTS_FILE = STORAGE_DIR / "accounts.json"
 SESSION_COOKIE_NAME = "pb_session"
+INITIAL_ADMIN_PASSWORD = os.getenv("PB_INITIAL_ADMIN_PASSWORD", "").strip()
+INITIAL_ADMIN_PASSWORD_MIN_LENGTH = 12
 
 # LINE BOT 設定
 LINE_CONFIG_FILE = STORAGE_DIR / "line_config.json"

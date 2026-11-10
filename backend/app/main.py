@@ -767,6 +767,8 @@ async def get_gallery_list() -> Dict[str, Any]:
 
 @app.get("/api/gallery/thumb/{filename}", tags=["Public"], summary="公開照片縮圖（含浮水印）")
 async def get_gallery_thumb_public(filename: str) -> FileResponse:
+    if not _load_gallery_config().get("enabled", True):
+        raise HTTPException(status_code=404, detail="公開照片集未啟用")
     if not validate_filename_safety(filename):
         raise HTTPException(status_code=400, detail="無效的檔案名稱")
     src_path = INCOMING_DIR / filename
