@@ -76,6 +76,14 @@ ENABLE_API_DOCS=true python -m uvicorn app.main:app --reload --host 0.0.0.0 --po
 # 生產模式可改為不帶 --reload
 ```
 
+### 更改連接埠
+預設為 8000，若衝突可用 `PORT` 環境變數指定：
+```bash
+PORT=8080 ./start.sh          # Linux
+set PORT=8080 && start.bat    # Windows (cmd)
+```
+ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
+
 ### 訪問應用
 - **公開首頁**: http://localhost:8000
 - **管理後台**: http://localhost:8000/admin（帳號 `admin`；初始密碼會輸出於首次啟動日誌，或由 `PB_INITIAL_ADMIN_PASSWORD` 指定）

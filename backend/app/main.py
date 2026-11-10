@@ -30,6 +30,7 @@ from app.watcher import start_watcher
 from app.ngrok_manager import start_tunnel, stop_tunnel, get_tunnel_url, is_active as ngrok_is_active
 from app import auth, line_bot
 from app.config import (
+    NGROK_DEFAULT_PORT,
     APP_TITLE, APP_VERSION, APP_DESCRIPTION,
     TEMPLATE_DIR, INCOMING_DIR,
     BG_DIR, ACCOUNTS_FILE,
@@ -462,7 +463,7 @@ app.mount(STATIC_FONTS_ROUTE, StaticFiles(directory=str(FONTS_DIR)), name="fonts
 # ==================== Pydantic 模型 ====================
 
 class NgrokStartRequest(BaseModel):
-    port: int = 8000
+    port: Optional[int] = None
 
 class LoginRequest(BaseModel):
     username: str
@@ -1157,15 +1158,18 @@ async def save_ngrok_token(request: NgrokTokenRequest, pb_session: Optional[str]
 
 
 @app.post(f"{API_ADMIN_PREFIX}/ngrok/start", tags=["Ngrok"])
-async def start_ngrok(request: NgrokStartRequest, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
+async def start_ngrok(request: NgrokStartRequest, http_request: Request, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
     _require_auth(pb_session)
+    # 優先使用 uvicorn 實際監聽的 port，避免與 PORT 設定不一致
+    server = http_request.scope.get("server")
+    port = server[1] if server and server[1] else (request.port or NGROK_DEFAULT_PORT)
     token = _load_ngrok_token()
     if token is None:
         raise HTTPException(status_code=400, detail="請先設定 ngrok Auth Token，或透過環境變數 NGROK_AUTHTOKEN 注入")
     try:
         loop = asyncio.get_running_loop()
         public_url = await loop.run_in_executor(
-            None, functools.partial(start_tunnel, request.port, token)
+            None, functools.partial(start_tunnel, port, token)
         )
         return {"active": True, "public_url": public_url, "message": "ngrok 隧道啟動成功"}
     except RuntimeError as e:

@@ -1637,7 +1637,7 @@
             if (token) {
                 await axios.post(`${API_URL}/api/admin/ngrok/token`, { auth_token: token });
             }
-            const res = await axios.post(`${API_URL}/api/admin/ngrok/start`, { port: 8000 });
+            const res = await axios.post(`${API_URL}/api/admin/ngrok/start`, {});
             applyNgrokUI(res.data.active, res.data.public_url);
             loadLineConfig();
         } catch (err) {

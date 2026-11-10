@@ -61,6 +61,9 @@ SESSION_COOKIE_NAME = "pb_session"
 INITIAL_ADMIN_PASSWORD = os.getenv("PB_INITIAL_ADMIN_PASSWORD", "").strip()
 INITIAL_ADMIN_PASSWORD_MIN_LENGTH = 12
 
+# ngrok 設定（無法取得實際監聽 port 時的備援值）
+NGROK_DEFAULT_PORT = int(os.getenv("PORT", "8000"))
+
 # LINE BOT 設定
 LINE_CONFIG_FILE = STORAGE_DIR / "line_config.json"
 PHOTO_CODES_FILE = STORAGE_DIR / "photo_codes.json"
