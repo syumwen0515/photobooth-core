@@ -48,7 +48,7 @@ photobooth-core/
 sudo apt update
 sudo apt install python3 python3-venv python3-pip fonts-noto-cjk
 ```
-`fonts-noto-cjk`（或 `fonts-wqy-zenhei`）用於 Gallery 浮水印的繁體中文；未安裝時中文會顯示為方塊。更換字型後請在後台重新儲存浮水印文字以清除縮圖快取。
+`fonts-noto-cjk`（或 `fonts-wqy-zenhei`）用於 Gallery 浮水印的繁體中文；未安裝時中文會顯示為方塊。安裝後重啟服務，偵測到浮水印字型改變會自動清除舊縮圖快取。
 
 在專案根目錄執行：
 ```bash
@@ -127,6 +127,7 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 - [x] 取件頁面模板快取（`download.html` 改用 `_get_html()` 記憶體快取，不再逐次讀磁碟）
 - [x] 浮水印字型備援強化（`_wm_font()` 新增 `msyh.ttc` / `simsun.ttc`，確保無日文語言包環境仍可渲染中文）
 - [x] 浮水印字型支援 Linux 繁體中文（字型候選清單移至 `config.py` 的 `WM_FONT_CANDIDATES`，新增 Noto Sans CJK / WenQuanYi / Droid Fallback 與 `fc-match :lang=zh-tw` 動態備援；`_wm_font()` 加 `lru_cache`）
+- [x] 浮水印字型變更自動清除公開縮圖快取（啟動時比對 `storage/thumbs/wm_font.marker`；`wm_version` 改含字型路徑，瀏覽器快取同步失效；修正安裝 CJK 字型後重存相同文字仍顯示方塊的問題）
 - [x] IP 速率限制記憶體清理（`_session_cleanup_task` 每小時一併清理 `_code_request_log` 孤兒鍵）
 - [x] 登入以 Axios `application/json` POST 提交；表單不使用原生 `method` / `action`
 - [x] CSP header 全面強化（補齊 `default-src`、`script-src`、`style-src`、`font-src`、`img-src`、`connect-src`、`form-action`，消除 ZAP 的 4 個 Medium CSP 警告）

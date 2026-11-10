@@ -47,7 +47,7 @@ from app.config import (
     FONTS_DIR, FONTS_META_FILE,
     GOOGLE_FONTS, SUPPORTED_FONT_EXTS, MAX_FONT_SIZE_BYTES,
     SECURE_COOKIES, ENABLE_API_DOCS,
-    GALLERY_CONFIG_FILE, GALLERY_CONFIG_DEFAULTS, WM_FONT_CANDIDATES,
+    GALLERY_CONFIG_FILE, GALLERY_CONFIG_DEFAULTS, WM_FONT_CANDIDATES, WM_FONT_MARKER_NAME,
     LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW, TRUSTED_PROXY_IPS,
 )
 
@@ -257,6 +257,29 @@ def _invalidate_public_thumbs() -> None:
         logger.warning(f"⚠️ 清除公開縮圖快取失敗: {e}")
 
 
+def _wm_font_id() -> str:
+    paths = _wm_font_paths()
+    return paths[0] if paths else ""
+
+
+def _wm_version(wm_text: str) -> str:
+    return hashlib.md5(f"{wm_text}|{_wm_font_id()}".encode()).hexdigest()[:8]
+
+
+def _sync_wm_font_cache() -> None:
+    """浮水印字型改變（例如安裝 CJK 字型）時，清除以舊字型產生的公開縮圖快取。"""
+    marker = THUMB_DIR / WM_FONT_MARKER_NAME
+    try:
+        THUMB_DIR.mkdir(parents=True, exist_ok=True)
+        current = _wm_font_id()
+        previous = marker.read_text(encoding="utf-8") if marker.exists() else None
+        if previous != current:
+            _invalidate_public_thumbs()
+            marker.write_text(current, encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"⚠️ 同步浮水印字型快取失敗: {e}")
+
+
 def _load_index_text() -> Dict[str, Any]:
     if INDEX_TEXT_FILE.exists():
         try:
@@ -366,6 +389,7 @@ async def _session_cleanup_task() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     auth.init(ACCOUNTS_FILE)
+    _sync_wm_font_cache()
     _load_photo_codes()
     _assign_codes_for_existing_incoming()
     line_cfg = _load_line_config()
@@ -749,7 +773,7 @@ async def get_gallery_list() -> Dict[str, Any]:
     gallery_cfg = _load_gallery_config()
     enabled = gallery_cfg.get("enabled", True)
     wm_text = gallery_cfg.get("watermark_text") or GALLERY_CONFIG_DEFAULTS["watermark_text"]
-    wm_version = hashlib.md5(wm_text.encode()).hexdigest()[:8]
+    wm_version = _wm_version(wm_text)
     if not enabled:
         return {"enabled": False, "photos": [], "count": 0, "wm_version": wm_version}
     try:

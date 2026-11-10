@@ -83,7 +83,7 @@ backend/app/
 
 **Gallery 設定：**
 - `storage/gallery_config.json` — `{"enabled": true, "watermark_text": "..."}` （預設值定義在 `config.py` 的 `GALLERY_CONFIG_DEFAULTS`）
-- 浮水印文字變更時，呼叫 `_invalidate_public_thumbs()` 刪除所有 `pub_*.webp`；`/api/gallery` 回應帶 `wm_version`（浮水印 MD5 前 8 碼），前端縮圖 URL 帶 `?v={wm_version}` 使瀏覽器快取同步失效
+- 浮水印文字變更時，呼叫 `_invalidate_public_thumbs()` 刪除所有 `pub_*.webp`；啟動時 `_sync_wm_font_cache()` 比對 `THUMB_DIR/wm_font.marker`，浮水印字型改變也會清快取；`/api/gallery` 回應帶 `wm_version`（`md5(浮水印文字|字型路徑)` 前 8 碼），前端縮圖 URL 帶 `?v={wm_version}` 使瀏覽器快取同步失效
 
 ---
 
@@ -148,6 +148,7 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-03 | `list_incoming` / `get_gallery_list` 的 `stat()` 改為逐項 try/except | 兩個函數原先用 list comprehension 呼叫 `p.stat().st_mtime`，若另一請求在 `iterdir()` 與 `stat()` 之間刪除該檔案，會拋出 `FileNotFoundError` 使整個 API 500；改為逐項 try/except 跳過消失的檔案 |
 | 2026-06-03 | `photo_download_page` 改用 `_get_html()` 快取讀取 `download.html` | 原先每次取件頁面請求都直接 `read_text()` 讀磁碟，未使用與其他頁面一致的記憶體快取；改用 `_get_html("download.html")` 後首次後快取在記憶體，後續請求不再觸碰磁碟 |
 | 2026-06-03 | `_wm_font()` 新增 `msyh.ttc`（微軟正黑體）與 `simsun.ttc`（新細明體）備援 | 原先只嘗試 meiryo（需日文語言支援）與 msgothic；若未安裝日文語言包，浮水印中文字符渲染失敗（顯示方塊）；加入更常見的繁/簡中文字型優先順序 |
+| 2026-11-10 | 浮水印字型變更自動使公開縮圖快取失效（`_sync_wm_font_cache()` + `wm_version` 含字型） | 安裝 CJK 字型後，舊的方塊版 `pub_*.webp` 仍留在快取；後台重存「相同」浮水印文字不會觸發 `_invalidate_public_thumbs()`（僅文字變更才清），所以純中文一直顯示舊圖，加一個數字（文字改變）才重新產生；啟動時比對 `THUMB_DIR/wm_font.marker` 記錄的字型路徑，不同則清快取；`wm_version` 改為 `md5(文字\|字型路徑)`，使瀏覽器 24 小時快取一併失效 |
 | 2026-11-10 | `_wm_font()` 字型清單移至 `config.py::WM_FONT_CANDIDATES`，新增 Linux CJK 字型與 `fc-match` 備援 | Linux 上原清單只剩 DejaVu / Liberation（無 CJK 字形），Windows 路徑不存在，繁中浮水印顯示方塊；清單改為 Windows → Noto Sans CJK → WenQuanYi → Droid Fallback → macOS → 拉丁字型，並以 `fc-match :lang=zh-tw` 補足；結果以 `lru_cache` 快取；Linux 需安裝 `fonts-noto-cjk` 或 `fonts-wqy-zenhei`；更換字型後須重存浮水印文字以觸發 `_invalidate_public_thumbs()` |
 | 2026-06-03 | `_session_cleanup_task` 每小時順帶清理 `_code_request_log` 中的孤兒 IP 鍵 | IP 速率限制 dict 的值（timestamp list）會被清空，但鍵本身（IP 字串）永不移除，造成緩慢的記憶體增長；每小時清理一次所有 window 內無有效記錄的 IP 鍵 |
 | 2026-06-03 | Login form 加 `method="post" action="/api/auth/login"`（CWE-598）| 表單未設 method 屬性時預設為 GET；若 JS 停用，帳號密碼會出現在 URL query string，被 server log / browser history 記錄；加上 method/action 確保即使 JS 停用也走 POST |

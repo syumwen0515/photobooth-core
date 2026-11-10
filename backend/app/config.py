@@ -83,6 +83,9 @@ GALLERY_CONFIG_DEFAULTS: dict = {
     "watermark_text": "風嶺拍貼機",
 }
 
+# 記錄公開縮圖所用浮水印字型；字型改變時啟動會清除舊縮圖快取
+WM_FONT_MARKER_NAME = "wm_font.marker"
+
 # 浮水印字型候選（依序嘗試；需含 CJK 字形才能顯示繁體中文）
 WM_FONT_CANDIDATES: tuple = (
     r"C:\Windows\Fonts\msjh.ttc",
