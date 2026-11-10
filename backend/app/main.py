@@ -47,7 +47,7 @@ from app.config import (
     FONTS_DIR, FONTS_META_FILE,
     GOOGLE_FONTS, SUPPORTED_FONT_EXTS, MAX_FONT_SIZE_BYTES,
     SECURE_COOKIES, ENABLE_API_DOCS,
-    GALLERY_CONFIG_FILE, GALLERY_CONFIG_DEFAULTS,
+    GALLERY_CONFIG_FILE, GALLERY_CONFIG_DEFAULTS, WM_FONT_CANDIDATES,
     LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW, TRUSTED_PROXY_IPS,
 )
 
@@ -917,22 +917,31 @@ def _generate_thumbnail(src_path: Path, thumb_path: Path, fmt: str = "WEBP") -> 
     thumb_path.write_bytes(buf.getvalue())
 
 
+@functools.lru_cache(maxsize=1)
+def _wm_font_paths() -> tuple:
+    paths = [p for p in WM_FONT_CANDIDATES[:-3] if os.path.exists(p)]
+    if sys.platform != "win32":
+        try:
+            out = subprocess.run(
+                ["fc-match", "-f", "%{file}", ":lang=zh-tw"],
+                capture_output=True, text=True, timeout=3,
+            ).stdout.strip()
+            if out and os.path.exists(out) and out not in paths:
+                paths.append(out)
+        except Exception:
+            pass
+    paths += [p for p in WM_FONT_CANDIDATES[-3:] if os.path.exists(p)]
+    return tuple(paths)
+
+
+@functools.lru_cache(maxsize=32)
 def _wm_font(size: int) -> ImageFont.ImageFont:
-    candidates = [
-        r"C:\Windows\Fonts\meiryo.ttc",
-        r"C:\Windows\Fonts\msyh.ttc",
-        r"C:\Windows\Fonts\simsun.ttc",
-        r"C:\Windows\Fonts\msgothic.ttc",
-        r"C:\Windows\Fonts\arial.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    ]
-    for path in candidates:
-        if os.path.exists(path):
-            try:
-                return ImageFont.truetype(path, size)
-            except Exception:
-                pass
+    for path in _wm_font_paths():
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            pass
+    logging.getLogger(__name__).warning("找不到可用的 CJK 字型，浮水印中文可能顯示為方塊；請安裝 fonts-noto-cjk")
     return ImageFont.load_default(size=size)
 
 

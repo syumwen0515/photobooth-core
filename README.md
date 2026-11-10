@@ -46,8 +46,9 @@ photobooth-core/
 先安裝 Python 3、venv 與 pip。Ubuntu / Debian 可執行：
 ```bash
 sudo apt update
-sudo apt install python3 python3-venv python3-pip
+sudo apt install python3 python3-venv python3-pip fonts-noto-cjk
 ```
+`fonts-noto-cjk`（或 `fonts-wqy-zenhei`）用於 Gallery 浮水印的繁體中文；未安裝時中文會顯示為方塊。更換字型後請在後台重新儲存浮水印文字以清除縮圖快取。
 
 在專案根目錄執行：
 ```bash
@@ -125,6 +126,7 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 - [x] **全域佇列上傳 + 右下角懸浮進度視窗**（前端全域 `_uploadQueue` + `_drainUploadQueue` 最多 2 線程並發消化；第一次點擊立即啟動 2 個 worker，第二次點擊（有上傳進行中）只追加到同一佇列等待，不再開啟新的 pool；後端單檔端點讓每個請求有獨立 `onUploadProgress` 回調；右下角懸浮面板逐檔顯示即時進度條、完成打勾（綠）/ 失敗顯示重傳按鈕（紅色循環箭頭，hover 旋轉）；**有失敗未處理時不自動關閉**（`data-upload-failed` 屬性標記，重傳後清除）；全部成功或取消後 3 秒自動收起；點 ✕ 有上傳進行中時跳出確認提示，確認後清空佇列並透過 `AbortController` 中止所有進行中請求）
 - [x] 取件頁面模板快取（`download.html` 改用 `_get_html()` 記憶體快取，不再逐次讀磁碟）
 - [x] 浮水印字型備援強化（`_wm_font()` 新增 `msyh.ttc` / `simsun.ttc`，確保無日文語言包環境仍可渲染中文）
+- [x] 浮水印字型支援 Linux 繁體中文（字型候選清單移至 `config.py` 的 `WM_FONT_CANDIDATES`，新增 Noto Sans CJK / WenQuanYi / Droid Fallback 與 `fc-match :lang=zh-tw` 動態備援；`_wm_font()` 加 `lru_cache`）
 - [x] IP 速率限制記憶體清理（`_session_cleanup_task` 每小時一併清理 `_code_request_log` 孤兒鍵）
 - [x] 登入以 Axios `application/json` POST 提交；表單不使用原生 `method` / `action`
 - [x] CSP header 全面強化（補齊 `default-src`、`script-src`、`style-src`、`font-src`、`img-src`、`connect-src`、`form-action`，消除 ZAP 的 4 個 Medium CSP 警告）
@@ -250,6 +252,8 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 |------|--------|------|
 | `SECURE_COOKIES` | `false` | 設為 `true` 時 Session Cookie 加上 `Secure` flag，透過 ngrok HTTPS 部署時必須啟用 |
 | `ENABLE_API_DOCS` | `false` | 設為 `true` 開放 `/api/docs`、`/api/redoc`、`/api/openapi.json` |
+| `PORT` | `8000` | 伺服器監聽埠；`start.sh` / `start.bat` 與 ngrok 預設埠共用 |
+| `PB_INITIAL_ADMIN_PASSWORD` | 空（隨機產生） | 首次建立 `admin` 帳號的初始密碼，至少 12 字元；未設定時產生隨機密碼並輸出於日誌 |
 | `CORS_ORIGINS` | 空（不允許跨來源） | 逗號分隔的允許來源，例如 `https://example.ngrok.io` |
 | `PUBLIC_BASE_URL` | 空 | 未使用 ngrok 時的固定公開網址 |
 | `NGROK_AUTHTOKEN` | — | ngrok Auth Token（優先序高於後台儲存的 Token）|
@@ -307,7 +311,7 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 
 ---
 
-**版本**: 0.5.10 | **更新**: 2026-11-08（Linux 啟動、初始化管理員密碼、Gallery 停用端點封鎖、帳號 session 撤銷與回歸測試）| **狀態**: 上線前驗證中
+**版本**: 0.5.10 | **更新**: 2026-11-10（Linux 繁中浮水印字型；前次：Linux 啟動、初始化管理員密碼、Gallery 停用端點封鎖、帳號 session 撤銷與回歸測試）| **狀態**: 上線前驗證中
 
 ## 開發中 / 規劃中功能
 

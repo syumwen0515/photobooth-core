@@ -83,6 +83,28 @@ GALLERY_CONFIG_DEFAULTS: dict = {
     "watermark_text": "風嶺拍貼機",
 }
 
+# 浮水印字型候選（依序嘗試；需含 CJK 字形才能顯示繁體中文）
+WM_FONT_CANDIDATES: tuple = (
+    r"C:\Windows\Fonts\msjh.ttc",
+    r"C:\Windows\Fonts\msyh.ttc",
+    r"C:\Windows\Fonts\mingliu.ttc",
+    r"C:\Windows\Fonts\simsun.ttc",
+    r"C:\Windows\Fonts\meiryo.ttc",
+    r"C:\Windows\Fonts\msgothic.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/Library/Fonts/Arial Unicode.ttf",
+    r"C:\Windows\Fonts\arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+)
+
 # 首頁文字設定
 INDEX_TEXT_FILE = STORAGE_DIR / "index_text.json"
 INDEX_TEXT_DEFAULTS = {
