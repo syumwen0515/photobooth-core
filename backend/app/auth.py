@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from app.config import INITIAL_ADMIN_PASSWORD, INITIAL_ADMIN_PASSWORD_MIN_LENGTH
+from app.config import INITIAL_ADMIN_PASSWORD, INITIAL_ADMIN_PASSWORD_MIN_LENGTH, SUPER_ADMIN_USERNAME
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +225,8 @@ def add_account(username: str, password: str) -> tuple[bool, str]:
 
 
 def delete_account(username: str) -> tuple[bool, str]:
+    if username == SUPER_ADMIN_USERNAME:
+        return False, "無法刪除最高管理者帳號"
     accounts = _load_accounts()
     if len(accounts) <= 1:
         return False, "至少需保留一組帳號"

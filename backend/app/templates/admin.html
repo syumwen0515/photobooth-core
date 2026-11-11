@@ -1784,14 +1784,24 @@
     // ═══════════════════════════════════════════════
     // Accounts
     // ═══════════════════════════════════════════════
+    let _currentUser = null;
+    axios.interceptors.response.use(r => r, err => {
+        if (err.response?.status === 401 && !err.config?.url?.includes('/api/auth/')) {
+            window.location.href = '/login';
+        }
+        return Promise.reject(err);
+    });
+
     async function loadAccounts() {
         try {
             const res = await axios.get(`${API_URL}/api/admin/accounts`);
-            renderAccounts(res.data.accounts);
+            _currentUser = res.data.current;
+            renderAccounts(res.data.accounts, res.data.current, res.data.super_admin);
         } catch (_) {}
     }
 
-    function renderAccounts(accounts) {
+    function renderAccounts(accounts, current, superAdmin) {
+        const isSuper = current === superAdmin;
         const el = document.getElementById('accountsList');
         el.innerHTML = '';
         if (!accounts.length) return;
@@ -1820,8 +1830,8 @@
             delBtn.textContent = t('accounts.delete');
             delBtn.addEventListener('click', () => deleteAccount(u));
 
-            btnGroup.appendChild(pwBtn);
-            btnGroup.appendChild(delBtn);
+            if (isSuper || u === current) btnGroup.appendChild(pwBtn);
+            if (isSuper && u !== superAdmin) btnGroup.appendChild(delBtn);
             row.appendChild(nameSpan);
             row.appendChild(btnGroup);
             el.appendChild(row);
@@ -1886,6 +1896,10 @@
         try {
             await axios.put(`${API_URL}/api/admin/accounts/${encodeURIComponent(_pwTarget)}/password`, { new_password: pw });
             closePwModal();
+            if (_pwTarget === _currentUser) {
+                window.location.href = '/login';
+                return;
+            }
         } catch (err) {
             errEl.textContent = t('err.pwFail') + (err.response?.data?.detail || '');
             errEl.classList.remove('hidden');

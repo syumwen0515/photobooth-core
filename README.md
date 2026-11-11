@@ -172,10 +172,10 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 ### 帳號管理
 | 方法 | 端點 | 說明 |
 |------|------|------|
-| GET | `/api/admin/accounts` | 帳號列表 |
+| GET | `/api/admin/accounts` | 帳號列表（含 `current` 目前登入者、`super_admin`）|
 | POST | `/api/admin/accounts` | 新增帳號 |
-| PUT | `/api/admin/accounts/{username}/password` | 改密碼 |
-| DELETE | `/api/admin/accounts/{username}` | 刪除帳號 |
+| PUT | `/api/admin/accounts/{username}/password` | 改密碼（僅本人；`admin` 可改任何人，否則 403）|
+| DELETE | `/api/admin/accounts/{username}` | 刪除帳號（僅 `admin` 可刪，且 `admin` 本身不可刪）|
 
 ### 首頁底圖
 | 方法 | 端點 | 說明 |
@@ -312,7 +312,7 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 
 ---
 
-**版本**: 0.5.10 | **更新**: 2026-11-10（Linux 繁中浮水印字型；前次：Linux 啟動、初始化管理員密碼、Gallery 停用端點封鎖、帳號 session 撤銷與回歸測試）| **狀態**: 上線前驗證中
+**版本**: 0.5.11 | **更新**: 2026-11-11（帳號權限：admin 為最高管理者、改密碼僅限本人、改自己密碼後自動跳轉登入、後台 401 自動導向登入；前次：Linux 繁中浮水印字型；前次：Linux 啟動、初始化管理員密碼、Gallery 停用端點封鎖、帳號 session 撤銷與回歸測試）| **狀態**: 上線前驗證中
 
 ## 開發中 / 規劃中功能
 

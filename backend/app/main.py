@@ -37,7 +37,7 @@ from app.config import (
     CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, CORS_ALLOW_METHODS, CORS_ALLOW_HEADERS,
     MAX_FILE_SIZE_BYTES, SUPPORTED_IMAGE_FORMATS,
     STATIC_INCOMING_ROUTE, STATIC_BG_ROUTE, STATIC_FONTS_ROUTE,
-    API_ADMIN_PREFIX, WS_PHOTO_ROUTE, WS_MESSAGE_TYPE_NEW_INCOMING,
+    API_ADMIN_PREFIX, SUPER_ADMIN_USERNAME, WS_PHOTO_ROUTE, WS_MESSAGE_TYPE_NEW_INCOMING,
     LOG_LEVEL, LOG_FORMAT,
     SESSION_COOKIE_NAME,
     LINE_CONFIG_FILE, PHOTO_CODES_FILE, PUBLIC_BASE_URL,
@@ -659,8 +659,12 @@ async def get_me(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, 
 
 @app.get(f"{API_ADMIN_PREFIX}/accounts", tags=["Accounts"])
 async def list_accounts(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
-    _require_auth(pb_session)
-    return {"accounts": auth.get_accounts()}
+    username = _require_auth(pb_session)
+    return {
+        "accounts": auth.get_accounts(),
+        "current": username,
+        "super_admin": SUPER_ADMIN_USERNAME,
+    }
 
 
 @app.post(f"{API_ADMIN_PREFIX}/accounts", tags=["Accounts"])
@@ -674,7 +678,9 @@ async def add_account(request: AddAccountRequest, pb_session: Optional[str] = Co
 
 @app.put(f"{API_ADMIN_PREFIX}/accounts/{{username}}/password", tags=["Accounts"])
 async def change_password(username: str, request: ChangePasswordRequest, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, str]:
-    _require_auth(pb_session)
+    operator = _require_auth(pb_session)
+    if operator != SUPER_ADMIN_USERNAME and operator != username:
+        raise HTTPException(status_code=403, detail="只能修改自己的密碼")
     ok, msg = auth.change_password(username, request.new_password)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
@@ -683,7 +689,11 @@ async def change_password(username: str, request: ChangePasswordRequest, pb_sess
 
 @app.delete(f"{API_ADMIN_PREFIX}/accounts/{{username}}", tags=["Accounts"])
 async def delete_account(username: str, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, str]:
-    _require_auth(pb_session)
+    operator = _require_auth(pb_session)
+    if operator != SUPER_ADMIN_USERNAME:
+        raise HTTPException(status_code=403, detail="僅 admin 可刪除帳號")
+    if username == SUPER_ADMIN_USERNAME:
+        raise HTTPException(status_code=403, detail="無法刪除最高管理者帳號")
     ok, msg = auth.delete_account(username)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)

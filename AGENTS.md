@@ -136,6 +136,7 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-02 | 取件碼端點加速率限制 | 防止自動化腳本枚舉取件碼竊取照片 |
 | 2026-06-02 | API Docs 預設關閉 | `/api/docs` 向任何知道 URL 的人暴露完整 API 結構 |
 | 2026-06-02 | 改密碼改用 Modal + `type="password"` | 原 `prompt()` 以明碼顯示密碼輸入；改為頁內 Modal，提供密碼遮罩、確認欄位與前端驗證 |
+| 2026-11-11 | `admin` 為最高管理者（`config.py::SUPER_ADMIN_USERNAME`）；改密碼僅限本人，刪帳號僅 admin；改自己密碼後前端跳轉 `/login`，後台 axios 401 攔截器導向登入 | 原本任一管理者可改/刪任何帳號；改密碼會銷毀該帳號 session，前端未跳轉導致後續請求 401 才發現；`/api/admin/accounts` 回傳 `current` / `super_admin` 供前端隱藏無權限按鈕，後端仍為權限判斷依據 |
 | 2026-06-03 | 深/淺色模式用 CSS variables + `data-theme` | 無建置工具環境下最輕量；不依賴 Tailwind dark class purge；全域狀態一個 attribute 搞定 |
 | 2026-06-03 | i18n 用純 JS TRANSLATIONS 物件 | 不引入外部函式庫，維持零建置工具原則；管理頁面文字量不大，物件方案已足夠 |
 | 2026-06-03 | login.html / download.html 移除 Tailwind CDN | 這兩頁邏輯極簡，Tailwind CDN 的額外 JS runtime 不值得；改用純 CSS 同時統一到 frame-corner / vert-label / wa-input 視覺語言 |
@@ -215,6 +216,7 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**在 `login()` 端點移除 `_check_login_rate_limit(client_ip)` 呼叫 — 帳號維度的鎖定（`is_account_locked`）無法防止帳號噴灑攻擊（攻擊者輪流嘗試大量帳號各試 4 次，永遠不觸發鎖定）；IP 維度速率限制是必要的補充防線
 - **不得**恢復 `admin/admin` 預設密碼 — 新安裝必須使用 `PB_INITIAL_ADMIN_PASSWORD`（至少 12 字元）或由 `secrets.token_urlsafe()` 產生一次性密碼；舊的 `admin/admin` 帳號在啟動時必須輪替
 - **不得**在 `open_incoming_folder()` 恢復使用 `Host` header 做本機檢查 — `Host` header 是用戶端可控制的 HTTP 標頭；透過 ngrok 的請求可偽造 `Host: localhost` 通過檢查；必須改用 `request.client.host`（TCP 連線來源 IP）
+- **不得**移除 `change_password` / `delete_account` 路由的權限檢查 — 改密碼僅限本人或 `SUPER_ADMIN_USERNAME`；刪帳號僅 `SUPER_ADMIN_USERNAME`，且該帳號不可被刪（`auth.delete_account` 亦拒絕）；僅隱藏前端按鈕不足以防護
 - **不得**在 `script-src` 中重新加入 `'unsafe-inline'` — nonce 已替代 `unsafe-inline`，重新加入使 XSS 攻擊者可注入任意 script；`style-src` 的 `'unsafe-inline'` 僅允許存在於 `/admin` 路徑（Tailwind Play CDN 動態注入 `<style>` 的必要條件），**不得**擴展到 `/`、`/login`、`/download/` 等公開路徑
 - **不得**在任何 HTML 模板中新增無 `nonce` 屬性的 `<script>` 標籤（無 `src`）— 缺少 nonce 的 inline script 會被 `script-src 'nonce-...'` 阻擋，造成 JS 功能中斷
 - **不得**對 `_apply_nonce(html, nonce)` 傳入靜態或可預測的 nonce 字串 — nonce 必須來自 `request.state.csp_nonce`（每請求由 `secrets.token_urlsafe(16)` 生成），重用或可預測的 nonce 使 CSP nonce 保護失效

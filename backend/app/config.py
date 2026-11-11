@@ -8,7 +8,7 @@ from pathlib import Path
 
 # 應用程式設定
 APP_TITLE = "智能拍貼機邊緣端系統"
-APP_VERSION = "0.5.10"
+APP_VERSION = "0.5.11"
 APP_DESCRIPTION = "支援 WebSocket 即時預覽、取件碼系統、LINE BOT 整合的展場級拍貼系統"
 
 # 目錄路徑配置
@@ -49,6 +49,9 @@ LOG_FORMAT = "[%(asctime)s] %(levelname)s: %(message)s"
 
 # API 設定
 API_ADMIN_PREFIX = "/api/admin"
+
+# 最高管理者帳號：可改任何人密碼，且不可被刪除
+SUPER_ADMIN_USERNAME = "admin"
 
 # 靜態檔案掛載路由
 STATIC_INCOMING_ROUTE = "/static/incoming"
