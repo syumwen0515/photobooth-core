@@ -44,7 +44,13 @@ def start_tunnel(port: int = 8000, auth_token: Optional[str] = None, domain: Opt
 
     try:
         if domain:
-            _tunnel = ngrok.connect(port, "http", domain=domain)
+            try:
+                _tunnel = ngrok.connect(port, "http", domain=domain)
+            except ngrok_exc.PyngrokNgrokError as e:
+                # ngrok agent v2 不認得 domain 欄位，需改用 hostname
+                if "field domain not found" not in str(e):
+                    raise
+                _tunnel = ngrok.connect(port, "http", hostname=domain)
         else:
             _tunnel = ngrok.connect(port, "http")
         logger.info(f"✓ ngrok 隧道已啟動: {_tunnel.public_url}")
