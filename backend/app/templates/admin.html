@@ -663,6 +663,10 @@
                             <button id="ngrokTokenToggle"
                                     class="btn-outline whitespace-nowrap" data-i18n="btn.show">顯示</button>
                         </div>
+                        <div id="ngrokDomainRow" class="flex items-center gap-2">
+                            <span class="text-xs text-wa-blue font-light whitespace-nowrap" data-i18n="ngrok.domain">自訂網域</span>
+                            <input id="ngrokDomainInput" type="text" class="wa-input flex-1" data-i18n-placeholder="ngrok.domainPlaceholder">
+                        </div>
                         <div id="ngrokUrlRow" class="hidden flex items-center gap-2">
                             <span class="text-xs text-wa-blue font-light whitespace-nowrap" data-i18n="ngrok.publicUrl">公開網址</span>
                             <a id="ngrokUrlLink" href="#" target="_blank"
@@ -918,6 +922,8 @@
             'ngrok.stop':          '停止',
             'ngrok.tokenPlaceholder': '留空則使用環境變數',
             'ngrok.tokenSaved':    '✓ Token 已儲存',
+            'ngrok.domain':        '自訂網域',
+            'ngrok.domainPlaceholder': '例如 photo.example.com；留空使用 ngrok 免費網域',
             'ngrok.publicUrl':     '公開網址',
             'ngrok.hint':          '啟動後 LINE BOT Webhook URL 將自動改用 ngrok 公開網址。',
             'gallery.title':       'Gallery 設定',
@@ -1039,6 +1045,8 @@
             'ngrok.stop':          'Stop',
             'ngrok.tokenPlaceholder': 'Leave blank to use env var',
             'ngrok.tokenSaved':    '✓ Token saved',
+            'ngrok.domain':        'Custom domain',
+            'ngrok.domainPlaceholder': 'e.g. photo.example.com; blank = free ngrok domain',
             'ngrok.publicUrl':     'Public URL',
             'ngrok.hint':          'The LINE BOT webhook URL automatically switches to the ngrok public URL when active.',
             'gallery.title':       'Gallery Settings',
@@ -1592,6 +1600,7 @@
         const startBtn  = document.getElementById('ngrokStartBtn');
         const stopBtn   = document.getElementById('ngrokStopBtn');
         const tokenRow  = document.getElementById('ngrokTokenRow');
+        const domainRow = document.getElementById('ngrokDomainRow');
         const urlRow    = document.getElementById('ngrokUrlRow');
         const urlLink   = document.getElementById('ngrokUrlLink');
         const savedBadge = document.getElementById('ngrokTokenSaved');
@@ -1603,6 +1612,7 @@
             startBtn.classList.add('hidden');
             stopBtn.classList.remove('hidden');
             tokenRow.classList.add('hidden');
+            domainRow.classList.add('hidden');
             urlRow.classList.remove('hidden');
             urlLink.href        = url;
             urlLink.textContent = url;
@@ -1613,6 +1623,7 @@
             startBtn.classList.remove('hidden');
             stopBtn.classList.add('hidden');
             tokenRow.classList.remove('hidden');
+            domainRow.classList.remove('hidden');
             urlRow.classList.add('hidden');
             if (savedBadge) {
                 savedBadge.textContent = t('ngrok.tokenSaved');
@@ -1625,6 +1636,10 @@
         try {
             const res = await axios.get(`${API_URL}/api/admin/ngrok/status`);
             applyNgrokUI(res.data.active, res.data.public_url, res.data.has_token);
+            const domainInput = document.getElementById('ngrokDomainInput');
+            if (!res.data.active && document.activeElement !== domainInput) {
+                domainInput.value = res.data.domain || '';
+            }
         } catch (_) {}
     }
 
@@ -1637,6 +1652,9 @@
             if (token) {
                 await axios.post(`${API_URL}/api/admin/ngrok/token`, { auth_token: token });
             }
+            await axios.post(`${API_URL}/api/admin/ngrok/domain`, {
+                domain: document.getElementById('ngrokDomainInput').value.trim()
+            });
             const res = await axios.post(`${API_URL}/api/admin/ngrok/start`, {});
             applyNgrokUI(res.data.active, res.data.public_url);
             loadLineConfig();

@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from app.watcher import start_watcher
-from app.ngrok_manager import start_tunnel, stop_tunnel, get_tunnel_url, is_active as ngrok_is_active
+from app.ngrok_manager import start_tunnel, stop_tunnel, normalize_domain, get_tunnel_url, is_active as ngrok_is_active
 from app import auth, line_bot
 from app.config import (
     NGROK_DEFAULT_PORT,
@@ -176,11 +176,48 @@ def _load_ngrok_token() -> Optional[str]:
     return None
 
 
+def _read_ngrok_config() -> Dict[str, Any]:
+    if NGROK_CONFIG_FILE.exists():
+        try:
+            cfg = json.loads(NGROK_CONFIG_FILE.read_text(encoding="utf-8"))
+            if isinstance(cfg, dict):
+                return cfg
+        except Exception:
+            pass
+    return {}
+
+
+def _write_ngrok_config(cfg: Dict[str, Any]) -> None:
+    NGROK_CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+
+
 def _save_ngrok_token(auth_token: str) -> None:
-    NGROK_CONFIG_FILE.write_text(
-        json.dumps({"auth_token": auth_token}, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    cfg = _read_ngrok_config()
+    cfg["auth_token"] = auth_token
+    _write_ngrok_config(cfg)
+
+
+# ── ngrok 自訂網域（優先序低於環境變數 NGROK_DOMAIN）────
+def _load_ngrok_domain() -> Optional[str]:
+    env_domain = os.getenv("NGROK_DOMAIN", "").strip()
+    if env_domain:
+        try:
+            return normalize_domain(env_domain)
+        except ValueError:
+            logger.warning("⚠️ NGROK_DOMAIN 格式不正確，已忽略")
+    try:
+        return normalize_domain(_read_ngrok_config().get("domain"))
+    except ValueError:
+        return None
+
+
+def _save_ngrok_domain(domain: Optional[str]) -> None:
+    cfg = _read_ngrok_config()
+    if domain:
+        cfg["domain"] = domain
+    else:
+        cfg.pop("domain", None)
+    _write_ngrok_config(cfg)
 
 
 # ── LINE BOT 設定儲存 ────────────────────────────────────────
@@ -1180,11 +1217,30 @@ async def open_incoming_folder(request: Request, pb_session: Optional[str] = Coo
 @app.get(f"{API_ADMIN_PREFIX}/ngrok/status", tags=["Ngrok"])
 async def get_ngrok_status(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
     _require_auth(pb_session)
-    return {"active": ngrok_is_active(), "public_url": get_tunnel_url(), "has_token": _load_ngrok_token() is not None}
+    return {"active": ngrok_is_active(), "public_url": get_tunnel_url(), "has_token": _load_ngrok_token() is not None, "domain": _load_ngrok_domain()}
 
 
 class NgrokTokenRequest(BaseModel):
     auth_token: str
+
+
+class NgrokDomainRequest(BaseModel):
+    domain: str = ""
+
+
+@app.post(f"{API_ADMIN_PREFIX}/ngrok/domain", tags=["Ngrok"])
+async def save_ngrok_domain(request: NgrokDomainRequest, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
+    _require_auth(pb_session)
+    try:
+        domain = normalize_domain(request.domain)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        _save_ngrok_domain(domain)
+    except Exception as e:
+        logger.error(f"ngrok 自訂網域儲存失敗: {e}")
+        raise HTTPException(status_code=500, detail="自訂網域儲存失敗")
+    return {"domain": domain, "message": "自訂網域已儲存" if domain else "自訂網域已清除"}
 
 
 @app.post(f"{API_ADMIN_PREFIX}/ngrok/token", tags=["Ngrok"])
@@ -1212,7 +1268,7 @@ async def start_ngrok(request: NgrokStartRequest, http_request: Request, pb_sess
     try:
         loop = asyncio.get_running_loop()
         public_url = await loop.run_in_executor(
-            None, functools.partial(start_tunnel, port, token)
+            None, functools.partial(start_tunnel, port, token, _load_ngrok_domain())
         )
         return {"active": True, "public_url": public_url, "message": "ngrok 隧道啟動成功"}
     except RuntimeError as e:

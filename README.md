@@ -85,6 +85,8 @@ set PORT=8080 && start.bat    # Windows (cmd)
 ```
 ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 
+若已訂閱 ngrok 並設定自訂網域（Domains），可在後台「外網穿透」填入「自訂網域」（如 `photo.example.com`），或以 `NGROK_DOMAIN` 環境變數指定；留空則使用 ngrok 免費隨機網域。
+
 ### 訪問應用
 - **公開首頁**: http://localhost:8000
 - **管理後台**: http://localhost:8000/admin（帳號 `admin`；初始密碼會輸出於首次啟動日誌，或由 `PB_INITIAL_ADMIN_PASSWORD` 指定）
@@ -212,6 +214,7 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 |------|------|------|
 | GET | `/api/admin/ngrok/status` | 隧道狀態 |
 | POST | `/api/admin/ngrok/token` | 儲存 Auth Token |
+| POST | `/api/admin/ngrok/domain` | 儲存自訂網域（空字串＝清除，改用免費網域）|
 | POST | `/api/admin/ngrok/start` | 啟動隧道 |
 | POST | `/api/admin/ngrok/stop` | 停止隧道 |
 | GET | `/api/ngrok-url` | 取得公開網址（公開）|
@@ -258,6 +261,7 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 | `CORS_ORIGINS` | 空（不允許跨來源） | 逗號分隔的允許來源，例如 `https://example.ngrok.io` |
 | `PUBLIC_BASE_URL` | 空 | 未使用 ngrok 時的固定公開網址 |
 | `NGROK_AUTHTOKEN` | — | ngrok Auth Token（優先序高於後台儲存的 Token）|
+| `NGROK_DOMAIN` | — | ngrok 自訂網域（需付費方案；優先序高於後台儲存的網域，留空則使用免費網域）|
 | `LINE_CHANNEL_SECRET` | — | LINE Channel Secret（**優先序高於後台儲存的設定**，建議生產部署使用）|
 | `LINE_CHANNEL_ACCESS_TOKEN` | — | LINE Channel Access Token（同上，兩個都設定才生效）|
 | `LOG_LEVEL` | `INFO` | 日誌等級：`DEBUG` / `INFO` / `WARNING` / `ERROR` |
