@@ -44,13 +44,18 @@ def start_tunnel(port: int = 8000, auth_token: Optional[str] = None, domain: Opt
 
     try:
         if domain:
-            try:
-                _tunnel = ngrok.connect(port, "http", domain=domain)
-            except ngrok_exc.PyngrokNgrokError as e:
-                # ngrok agent v2 不認得 domain 欄位，需改用 hostname
-                if "field domain not found" not in str(e):
-                    raise
-                _tunnel = ngrok.connect(port, "http", hostname=domain)
+            # 不同版本 ngrok agent 的網域欄位不同：domain（v3 tunnels）/ url（新版 endpoints）/ hostname（v2）
+            last_error = None
+            for opts in ({"domain": domain}, {"url": f"https://{domain}"}, {"hostname": domain}):
+                try:
+                    _tunnel = ngrok.connect(port, "http", **opts)
+                    break
+                except ngrok_exc.PyngrokNgrokError as e:
+                    if "not found in type" not in str(e):
+                        raise
+                    last_error = e
+            else:
+                raise last_error
         else:
             _tunnel = ngrok.connect(port, "http")
         logger.info(f"✓ ngrok 隧道已啟動: {_tunnel.public_url}")
