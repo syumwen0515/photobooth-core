@@ -74,3 +74,23 @@ class MirroredRowsTests(unittest.TestCase):
     def test_single_column_is_not_mirrored(self):
         slots = template_service.detect_transparent_slots(_template_png((300, 420), self.HOLES[::2]))
         self.assertFalse(template_service.looks_mirrored(slots))
+
+
+class EdgeFilterTests(unittest.TestCase):
+    def test_edge_connected_transparent_region_is_dropped_when_inner_slots_exist(self):
+        img = Image.new("RGBA", (300, 300), (0, 0, 0, 255))
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([50, 50, 149, 149], fill=(0, 0, 0, 0))
+        draw.rectangle([0, 250, 299, 299], fill=(0, 0, 0, 0))  # 底部整條透明留白
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        slots = template_service.detect_transparent_slots(buf.getvalue())
+        self.assertEqual(slots, [{"slot_id": 1, "x": 50, "y": 50, "width": 100, "height": 100}])
+
+    def test_full_bleed_slot_is_kept_when_nothing_else_detected(self):
+        img = Image.new("RGBA", (200, 200), (0, 0, 0, 255))
+        ImageDraw.Draw(img).rectangle([0, 0, 199, 99], fill=(0, 0, 0, 0))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        slots = template_service.detect_transparent_slots(buf.getvalue())
+        self.assertEqual(len(slots), 1)

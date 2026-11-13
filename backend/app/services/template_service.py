@@ -125,8 +125,12 @@ def detect_slots_from_alpha(
             box[3] = max(box[3], y + 1)
             box[4] += x1 - x0
 
+    height, width = alpha.shape[:2]
+    candidates = [b for b in boxes.values() if b[4] >= min_area]
+    # 與影像邊緣相連的透明區視為背景留白而非槽位；若全部都碰邊（例如滿版槽位）則保留
+    inner = [b for b in candidates if b[0] > 0 and b[1] > 0 and b[2] < width and b[3] < height]
     found: List[Tuple[int, int, int, int]] = [
-        (b[0], b[1], b[2] - b[0], b[3] - b[1]) for b in boxes.values() if b[4] >= min_area
+        (b[0], b[1], b[2] - b[0], b[3] - b[1]) for b in (inner or candidates)
     ]
     found.sort(key=lambda t: (t[1], t[0]))
     return [

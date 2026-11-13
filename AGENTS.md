@@ -145,6 +145,9 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-11-13 | 合成採「等比例放大填滿槽位、置中裁切」（`ImageOps.fit`），不留白、不變形；`/app` 相簿上傳不在瀏覽器端裁切 | 客戶要求照片直接符合框架；曾試過 `ImageOps.contain`（完整放入、留白）但被否決；相簿照片只在瀏覽器端縮到最長邊 1600px，裁切統一由伺服器處理，避免相機與相簿兩條路徑結果不一致、也避免二次裁切 |
 | 2026-11-13 | 模板支援左右對稱 `mirror_rows`：同一列（垂直重疊超過一半）的槽位共用一張照片；上傳時若每列恰好 2 槽位則自動啟用，後台可勾選/取消 | 客戶版型為左右對稱（4 列 × 2 = 8 槽放 4 張）；`template_service.photo_groups()` 是「需要幾張照片」的唯一依據，`/api/v1/customer/templates` 只回傳每組的代表槽位，`customer_composite` 驗證照片數須等於組數；舊模板無此欄位視為 false，行為不變 |
 | 2026-11-13 | 後台可刪除誤判槽位（確認後立即儲存，至少保留 1 個）；`/app` 新增「從相簿選取照片」（可多選，依序補滿槽位）；相機被拒絕時仍可用相簿 | 偵測可能誤判；使用者不一定能用相機；HTTPS 檢查失敗（非安全環境）時仍整頁顯示提示，不提供相簿上傳 |
+| 2026-11-14 | 新增選用「列印」（部分推翻 2026-06-02 移除 printer）：`print_config.json`（預設關閉）、`print_service.py`、`GET/POST /api/admin/print-settings`、`POST /api/admin/print/{filename}` | 店內需要直接列印；僅管理員、僅本機連線（避免經 ngrok 遠端觸發）、需啟用；Windows 用 `os.startfile(..., "print")`（指定印表機則 `mspaint /pt`），其他系統用 `lp`；失敗回 500 不影響其他功能；Windows 實機行為待現場驗證 |
+| 2026-11-14 | 後台「相機拍照」採 USB 網路攝影機模式（Sony USB Streaming / Imaging Edge Webcam、Canon EOS Webcam Utility），以瀏覽器 `getUserMedia` 擷取並推入既有上傳佇列；`/admin` 的 `Permissions-Policy` 同為 `camera=(self)` | digiCamControl 對 Sony 僅支援舊 Wi-Fi API；不引入相機 SDK、後端零新依賴；解析度受 UVC 限制；需 localhost 或 HTTPS；`/admin` 需登入，故放寬僅限已驗證頁面 |
+| 2026-11-14 | 槽位偵測過濾邊緣透明區 | 模板外圍透明留白會被誤判為槽位；若透明區碰到影像邊緣且存在內部透明區則捨棄，全部皆碰邊（滿版槽位）則保留；取捨：混合版型中刻意貼邊的槽位會被丟棄，需調整模板 |
 | 2026-11-13 | `/app` 路徑的 `Permissions-Policy` 為 `camera=(self)`，其餘路徑維持 `camera=()` | `getUserMedia` 需要相機權限，原全站 `camera=()` 會直接封鎖；僅對 `SELFIE_PAGE_ROUTE` 放寬到同源，其餘頁面不變；CSP 未改動（`/app` 與其他公開頁一樣 `style-src` nonce-only） |
 | 2026-06-03 | 深/淺色模式用 CSS variables + `data-theme` | 無建置工具環境下最輕量；不依賴 Tailwind dark class purge；全域狀態一個 attribute 搞定 |
 | 2026-06-03 | i18n 用純 JS TRANSLATIONS 物件 | 不引入外部函式庫，維持零建置工具原則；管理頁面文字量不大，物件方案已足夠 |
@@ -244,7 +247,9 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**讓客戶端傳入 LINE userId 觸發 push — 任何人可填他人 ID 濫用 bot；LINE 交付維持「客戶輸入取件碼」流程
 - **不得**繞過 `template_service.photo_groups()` 自行以槽位數計算所需照片數 — 左右對稱模板（`mirror_rows`）的照片數是「列數」而非槽位數；前後端與 `customer_composite` 必須一致
 - **不得**在 `/app` 相簿上傳於瀏覽器端依槽位比例裁切 — 裁切（`ImageOps.fit`）只在 `composite_service.compose` 進行
-- **不得**將 `Permissions-Policy: camera=(self)` 擴展到 `/app` 以外的路徑
+- **不得**將 `Permissions-Policy: camera=(self)` 擴展到 `/app`、`/admin` 以外的路徑
+- **不得**讓列印端點（`POST /api/admin/print/{filename}`）移除管理員認證、本機（`request.client.host`）限制、啟用開關或 `validate_filename_safety` + `relative_to` 檢查；印表機名稱必須通過 `PRINT_PRINTER_NAME_PATTERN` 白名單，且以 list 參數執行子程序（不得 `shell=True`）
+- **不得**在模板槽位偵測移除邊緣透明區過濾（與影像邊緣相連、且存在內部透明區時捨棄），否則模板外圍透明區會被誤判為槽位
 - **不得**在 HTML 模板中使用 `style=""` inline attribute — `style-src 'nonce-*'` 封鎖所有 `style=""` HTML attribute；所有樣式必須以具名 CSS class 形式置入 `<style nonce="__CSP_NONCE__">` 區塊；CSSOM API（`element.style.property = value`）不受此限，可安全使用
 - **不得**在任何 HTML 模板新增無 `nonce="__CSP_NONCE__"` 屬性的 `<style>` 元素 — 缺少 nonce 的 `<style>` 會被 `style-src 'nonce-*'` 封鎖，造成樣式失效；動態注入 CSS 改用預埋空 `<style id="..." nonce="__CSP_NONCE__">` + CSSOM `.textContent` 方式
 - **不得**將原本 `style="display:none"` inline attribute 移至 CSS 規則後，仍以 `element.style.display = ''`（空字串）顯示元素 — 空字串只清除 inline style，CSS 規則 `display:none` 仍生效，元素永遠不可見；正確寫法：`element.style.display = 'block'`（或 `'inline'`、`'flex'` 視元素而定）；同理，以 `element.style.display === 'none'` 判斷元素可見性時，若初始狀態由 CSS 而非 inline 控制，應改用 `getComputedStyle(element).display === 'none'`

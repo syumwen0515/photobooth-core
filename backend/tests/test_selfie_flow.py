@@ -155,3 +155,27 @@ class SelfieFlowTests(unittest.TestCase):
 
         self.assertEqual(submit(6).status_code, 400)
         self.assertEqual(submit(3).status_code, 200)
+
+    def test_print_requires_enabled_local_and_safe_filename(self):
+        (main.INCOMING_DIR / "a.jpg").write_bytes(_jpeg())
+        prefix = main.API_ADMIN_PREFIX
+        with patch.object(main, "PRINT_CONFIG_FILE", main.INCOMING_DIR.parent / "print.json"), \
+                patch.object(main, "_print_config_cache", None), \
+                patch.object(main.print_service, "print_image") as printer:
+            local = TestClient(main.app, client=("127.0.0.1", 50000))
+            self.assertEqual(local.post(f"{prefix}/print/a.jpg").status_code, 403)  # 尚未啟用
+            bad = local.post(f"{prefix}/print-settings", json={"enabled": True, "printer": 'x"; rm -rf /'})
+            self.assertEqual(bad.status_code, 400)
+            ok = local.post(f"{prefix}/print-settings", json={"enabled": True, "printer": "Canon SELPHY CP1500"})
+            self.assertEqual(ok.status_code, 200)
+            self.assertEqual(local.post(f"{prefix}/print/a.jpg").status_code, 200)
+            printer.assert_called_once()
+            self.assertEqual(printer.call_args.args[1], "Canon SELPHY CP1500")
+            self.assertEqual(local.post(f"{prefix}/print/..%2Fsecret.jpg").status_code, 404)
+            self.assertEqual(local.post(f"{prefix}/print/missing.jpg").status_code, 404)
+            remote = TestClient(main.app, client=("203.0.113.9", 50000))
+            self.assertEqual(remote.post(f"{prefix}/print/a.jpg").status_code, 403)
+
+    def test_admin_page_allows_camera(self):
+        res = self.client.get("/admin")
+        self.assertIn("camera=(self)", res.headers["Permissions-Policy"])
