@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>風嶺拍貼機 — 自拍拍貼</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300;400&display=swap">
+    <style nonce="__CSP_NONCE__">
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        [hidden] { display: none !important; }
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            min-height: 100svh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem 1rem;
+            background: #f5f5f0;
+            color: #2b2b2b;
+            overflow-x: hidden;
+        }
+        .frame-corner { position: absolute; width: 24px; height: 24px; }
+        .frame-corner::before,
+        .frame-corner::after { content: ''; position: absolute; background: rgba(184, 197, 214, 0.45); }
+        .frame-corner::before { width: 100%; height: 1px; top: 0; left: 0; }
+        .frame-corner::after  { width: 1px; height: 100%; top: 0; left: 0; }
+        .frame-corner.tl { top: 0; left: 0; }
+        .frame-corner.tr { transform: rotate(90deg);  top: 0; right: 0; }
+        .frame-corner.bl { transform: rotate(270deg); bottom: 0; left: 0; }
+        .frame-corner.br { transform: rotate(180deg); bottom: 0; right: 0; }
+        .frame-wrapper { position: fixed; inset: 20px; pointer-events: none; z-index: 5; }
+
+        .app-card { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 18px; }
+        .app-card section { display: flex; flex-direction: column; gap: 14px; }
+        .title { text-align: center; font-weight: 200; font-size: 1.1rem; letter-spacing: 0.3em; text-indent: 0.3em; }
+        .hint  { text-align: center; font-size: 0.62rem; letter-spacing: 0.14em; line-height: 1.8; color: rgba(43, 43, 43, 0.55); font-weight: 300; }
+        .error { text-align: center; font-size: 0.62rem; letter-spacing: 0.1em; color: #b45454; min-height: 1em; }
+
+        .tpl-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .tpl-card {
+            border: 1px solid rgba(43, 43, 43, 0.15);
+            background: #fff;
+            padding: 8px;
+            border-radius: 2px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-family: inherit;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        .tpl-card:active { transform: scale(0.98); }
+        .tpl-card img { width: 100%; display: block; background: rgba(43, 43, 43, 0.04); }
+        .tpl-name { font-size: 0.6rem; letter-spacing: 0.14em; color: rgba(43, 43, 43, 0.65); }
+
+        .cam-box {
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+            border-radius: 4px;
+            background: #1c1c1c;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+        }
+        .cam-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .cam-video.mirror { transform: scaleX(-1); }
+        .countdown {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 4rem; font-weight: 100; color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+        .progress { text-align: center; font-size: 0.6rem; letter-spacing: 0.22em; color: rgba(43, 43, 43, 0.55); }
+        .shots { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+        .shots img { width: 56px; height: 56px; object-fit: cover; border-radius: 2px; border: 1px solid rgba(43, 43, 43, 0.15); }
+
+        .btn {
+            display: block; width: 100%; padding: 12px 0;
+            font-size: 0.72rem; font-weight: 300; letter-spacing: 0.22em; text-indent: 0.22em; text-align: center;
+            border: 1px solid rgba(43, 43, 43, 0.18); color: rgba(43, 43, 43, 0.7);
+            border-radius: 2px; background: none; cursor: pointer; font-family: inherit;
+            -webkit-appearance: none; appearance: none; transition: all 0.3s ease;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+        .btn-primary { background: rgba(43, 43, 43, 0.82); color: #fff; border-color: transparent; }
+        .actions { display: flex; flex-direction: column; gap: 10px; }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .anim { animation: fadeUp 0.9s ease forwards; opacity: 0; }
+        .bottom-label { position: fixed; bottom: 20px; left: 0; right: 0; text-align: center; pointer-events: none; z-index: 10; }
+        .bottom-text { font-size: 0.52rem; letter-spacing: 0.28em; color: rgba(184, 197, 214, 0.5); font-weight: 300; }
+    </style>
+</head>
+<body>
+
+<div class="frame-wrapper">
+    <div class="frame-corner tl"></div>
+    <div class="frame-corner tr"></div>
+    <div class="frame-corner bl"></div>
+    <div class="frame-corner br"></div>
+</div>
+
+<div class="app-card anim">
+    <h1 class="title" data-i18n="app.title">自拍拍貼</h1>
+
+    <section id="view-loading"><p class="hint" data-i18n="app.loading">載入中…</p></section>
+    <section id="view-closed" hidden><p class="hint" data-i18n="app.closed">自拍活動目前尚未開放</p></section>
+    <section id="view-insecure" hidden><p class="hint" data-i18n="app.insecure">需要 HTTPS 連線才能使用相機，請改用安全連結開啟</p></section>
+
+    <section id="view-select" hidden>
+        <p class="hint" data-i18n="app.pick">請選擇版型</p>
+        <div id="tpl-list" class="tpl-list"></div>
+    </section>
+
+    <section id="view-camera" hidden>
+        <div id="cam-box" class="cam-box">
+            <video id="cam-video" class="cam-video mirror" playsinline autoplay muted></video>
+            <div id="countdown" class="countdown" hidden></div>
+        </div>
+        <p id="progress" class="progress"></p>
+        <div id="shots" class="shots"></div>
+        <div class="actions">
+            <button id="btn-shoot" class="btn btn-primary" data-i18n="app.shoot">拍攝</button>
+            <button id="btn-submit" class="btn btn-primary" data-i18n="app.submit" hidden>完成並合成</button>
+            <button id="btn-retake" class="btn" data-i18n="app.retake" hidden>重拍</button>
+            <button id="btn-back" class="btn" data-i18n="app.back">重新選擇版型</button>
+        </div>
+    </section>
+
+    <p id="error" class="error"></p>
+</div>
+
+<div class="bottom-label">
+    <span class="bottom-text">風嶺拍貼機 · PHOTOBOOTH SYSTEM</span>
+</div>
+
+<script nonce="__CSP_NONCE__">
+    /* ── i18n ── */
+    const TRANSLATIONS = {
+        'zh-TW': {
+            'app.title': '自拍拍貼',
+            'app.loading': '載入中…',
+            'app.closed': '自拍活動目前尚未開放',
+            'app.insecure': '需要 HTTPS 連線才能使用相機，請改用安全連結開啟',
+            'app.pick': '請選擇版型',
+            'app.shoot': '拍攝',
+            'app.submit': '完成並合成',
+            'app.retake': '重拍',
+            'app.back': '重新選擇版型',
+            'app.progress': '第 {n} / {total} 張',
+            'app.done': '已拍完 {total} 張，確認後即可合成',
+            'app.composing': '合成中，請稍候…',
+            'app.camDenied': '無法使用相機，請允許瀏覽器的相機權限',
+            'app.fail': '合成失敗，請稍後再試',
+            'app.rate': '操作過於頻繁，請稍後再試',
+        },
+        'en': {
+            'app.title': 'Selfie Photo Booth',
+            'app.loading': 'Loading…',
+            'app.closed': 'The selfie event is not open yet',
+            'app.insecure': 'HTTPS is required to use the camera. Please open the secure link.',
+            'app.pick': 'Choose a layout',
+            'app.shoot': 'Shoot',
+            'app.submit': 'Finish & Compose',
+            'app.retake': 'Retake',
+            'app.back': 'Choose another layout',
+            'app.progress': 'Photo {n} / {total}',
+            'app.done': 'All {total} photos taken. Confirm to compose.',
+            'app.composing': 'Composing, please wait…',
+            'app.camDenied': 'Camera unavailable. Please allow camera permission in your browser.',
+            'app.fail': 'Composition failed. Please try again later.',
+            'app.rate': 'Too many requests. Please try again later.',
+        }
+    };
+    const _browserLang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
+    let _lang = localStorage.getItem('pb-lang') || _browserLang;
+    function t(key, vars) {
+        var s = (TRANSLATIONS[_lang] || TRANSLATIONS['zh-TW'])[key] || key;
+        Object.keys(vars || {}).forEach(function (k) { s = s.replace('{' + k + '}', vars[k]); });
+        return s;
+    }
+    function applyLang(lang) {
+        _lang = lang;
+        localStorage.setItem('pb-lang', lang);
+        document.documentElement.lang = lang;
+        document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = t(el.dataset.i18n); });
+    }
+    applyLang(_lang);
+
+    /* ── State ── */
+    var API = '/api/v1/customer';
+    var HEADERS = { 'ngrok-skip-browser-warning': '1' };
+    var MAX_SIDE = 1600;
+    var COUNTDOWN_SECONDS = 3;
+    var _template = null;
+    var _stream = null;
+    var _shots = [];          // [{blob, url}]
+    var _busy = false;
+
+    function $(id) { return document.getElementById(id); }
+    function showView(name) {
+        ['loading', 'closed', 'insecure', 'select', 'camera'].forEach(function (v) {
+            $('view-' + v).hidden = (v !== name);
+        });
+    }
+    function setError(msg) { $('error').textContent = msg || ''; }
+
+    /* ── Template list ── */
+    async function loadTemplates() {
+        if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showView('insecure');
+            return;
+        }
+        try {
+            var r = await fetch(API + '/templates', { headers: HEADERS });
+            if (r.status === 429) { setError(t('app.rate')); return; }
+            var data = await r.json();
+            if (!data.enabled || !data.templates.length) { showView('closed'); return; }
+            await renderTemplates(data.templates);
+            showView('select');
+        } catch (e) {
+            setError(t('app.fail'));
+        }
+    }
+
+    async function renderTemplates(list) {
+        var box = $('tpl-list');
+        box.textContent = '';
+        window._tplById = {};
+        for (var i = 0; i < list.length; i++) {
+            var tpl = list[i];
+            window._tplById[tpl.id] = tpl;
+            var btn = document.createElement('button');
+            btn.className = 'tpl-card';
+            btn.dataset.id = tpl.id;
+            var img = document.createElement('img');
+            img.alt = tpl.name;
+            var label = document.createElement('span');
+            label.className = 'tpl-name';
+            label.textContent = tpl.name;
+            btn.appendChild(img);
+            btn.appendChild(label);
+            box.appendChild(btn);
+            loadTemplateImage(tpl.id, img);
+        }
+    }
+
+    function loadTemplateImage(id, img) {
+        fetch(API + '/templates/' + id + '/image', { headers: HEADERS })
+            .then(function (r) { if (!r.ok) throw new Error(); return r.blob(); })
+            .then(function (blob) { img.src = URL.createObjectURL(blob); })
+            .catch(function () {});
+    }
+
+    $('tpl-list').addEventListener('click', function (e) {
+        var card = e.target.closest('.tpl-card');
+        if (card) startCamera(window._tplById[card.dataset.id]);
+    });
+
+    /* ── Camera ── */
+    async function startCamera(tpl) {
+        setError('');
+        _template = tpl;
+        resetShots();
+        try {
+            _stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
+                audio: false
+            });
+        } catch (e) {
+            setError(t('app.camDenied'));
+            return;
+        }
+        var video = $('cam-video');
+        video.srcObject = _stream;
+        var slot = _template.slots[0];
+        $('cam-box').style.aspectRatio = slot.width + ' / ' + slot.height;
+        showView('camera');
+        updateProgress();
+        video.play().catch(function () {});
+    }
+
+    function stopCamera() {
+        if (_stream) {
+            _stream.getTracks().forEach(function (tr) { tr.stop(); });
+            _stream = null;
+        }
+        $('cam-video').srcObject = null;
+    }
+
+    function resetShots() {
+        _shots.forEach(function (s) { URL.revokeObjectURL(s.url); });
+        _shots = [];
+        $('shots').textContent = '';
+    }
+
+    function updateProgress() {
+        var total = _template.slots.length;
+        var done = _shots.length >= total;
+        $('progress').textContent = done
+            ? t('app.done', { total: total })
+            : t('app.progress', { n: _shots.length + 1, total: total });
+        $('btn-shoot').hidden = done;
+        $('btn-submit').hidden = !done;
+        $('btn-retake').hidden = _shots.length === 0;
+        var slot = _template.slots[Math.min(_shots.length, total - 1)];
+        $('cam-box').style.aspectRatio = slot.width + ' / ' + slot.height;
+    }
+
+    function captureFrame() {
+        var video = $('cam-video');
+        var slot = _template.slots[_shots.length];
+        var vw = video.videoWidth, vh = video.videoHeight;
+        if (!vw || !vh) return Promise.reject(new Error('no video'));
+        /* Crop the source to the slot aspect ratio so the capture matches the preview */
+        var targetRatio = slot.width / slot.height;
+        var sw = vw, sh = vh;
+        if (vw / vh > targetRatio) { sw = vh * targetRatio; } else { sh = vw / targetRatio; }
+        var sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+        var scale = Math.min(1, MAX_SIDE / Math.max(sw, sh));
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.round(sw * scale);
+        canvas.height = Math.round(sh * scale);
+        var ctx = canvas.getContext('2d');
+        /* Horizontal flip so the saved photo matches the mirrored preview */
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        return new Promise(function (resolve, reject) {
+            canvas.toBlob(function (b) { b ? resolve(b) : reject(new Error('toBlob')); }, 'image/jpeg', 0.92);
+        });
+    }
+
+    function runCountdown() {
+        var el = $('countdown');
+        return new Promise(function (resolve) {
+            var n = COUNTDOWN_SECONDS;
+            el.hidden = false;
+            el.textContent = n;
+            var timer = setInterval(function () {
+                n -= 1;
+                if (n <= 0) { clearInterval(timer); el.hidden = true; resolve(); }
+                else { el.textContent = n; }
+            }, 1000);
+        });
+    }
+
+    $('btn-shoot').addEventListener('click', async function () {
+        if (_busy) return;
+        _busy = true;
+        setError('');
+        $('btn-shoot').disabled = true;
+        try {
+            await runCountdown();
+            var blob = await captureFrame();
+            var url = URL.createObjectURL(blob);
+            _shots.push({ blob: blob, url: url });
+            var thumb = document.createElement('img');
+            thumb.src = url;
+            thumb.alt = '';
+            $('shots').appendChild(thumb);
+            updateProgress();
+        } catch (e) {
+            setError(t('app.fail'));
+        } finally {
+            $('btn-shoot').disabled = false;
+            _busy = false;
+        }
+    });
+
+    $('btn-retake').addEventListener('click', function () {
+        resetShots();
+        updateProgress();
+    });
+
+    $('btn-back').addEventListener('click', function () {
+        stopCamera();
+        resetShots();
+        setError('');
+        showView('select');
+    });
+
+    /* ── Submit ── */
+    $('btn-submit').addEventListener('click', async function () {
+        if (_busy) return;
+        _busy = true;
+        setError('');
+        var btn = $('btn-submit');
+        btn.disabled = true;
+        btn.textContent = t('app.composing');
+        try {
+            var form = new FormData();
+            form.append('template_id', _template.id);
+            _shots.forEach(function (s, i) { form.append('files', s.blob, 'shot' + (i + 1) + '.jpg'); });
+            var r = await fetch(API + '/composite', { method: 'POST', body: form, headers: HEADERS });
+            if (r.status === 429) throw new Error('rate');
+            if (!r.ok) throw new Error('fail');
+            var data = await r.json();
+            stopCamera();
+            window.location.href = data.download_url;
+        } catch (e) {
+            setError(e.message === 'rate' ? t('app.rate') : t('app.fail'));
+            btn.disabled = false;
+            btn.textContent = t('app.submit');
+            _busy = false;
+        }
+    });
+
+    window.addEventListener('pagehide', stopCamera);
+    loadTemplates();
+</script>
+</body>
+</html>

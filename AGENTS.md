@@ -12,7 +12,7 @@
 | Web 框架 | FastAPI + Uvicorn |
 | 即時通訊 | WebSocket（FastAPI 原生）|
 | 檔案監聽 | Watchdog |
-| 圖片處理 | Pillow（Pillow 操作必須用 `run_in_executor` 非同步化）|
+| 圖片處理 | Pillow + numpy（Pillow 操作必須用 `run_in_executor` 非同步化；numpy 僅用於模板透明槽位偵測）|
 | 外網穿透 | pyngrok |
 | LINE 整合 | line-bot-sdk v3 |
 | 前端 | 純 HTML + Axios CDN（無建置工具）；`admin.html` 使用 Tailwind CDN，其餘頁面已移除 |
@@ -67,8 +67,12 @@ backend/app/
 ├── auth.py          ← 密碼雜湊（PBKDF2）、Session、帳號 CRUD
 ├── line_bot.py      ← LINE Webhook handler（stateless，透過 init() 注入依賴）
 ├── watcher.py       ← Watchdog 監聽 incoming/，廣播 WebSocket 事件
+├── services/        ← 同步 CPU 工作（由路由以 run_in_executor 呼叫）
+│   ├── template_service.py   ← 模板 Alpha 透明槽位偵測
+│   └── composite_service.py  ← 照片裁切、貼槽位、模板疊合、JPEG 輸出
 ├── ngrok_manager.py ← pyngrok 隧道生命週期
 └── templates/       ← 純靜態 HTML，啟動時載入並快取於記憶體
+    ├── app.html     ← 客戶自拍頁（/app）
     ├── index.html   ← 公開首頁（Hero + Gallery 雙區塊 scroll-snap）
     ├── admin.html   ← 管理後台
     ├── login.html
@@ -137,6 +141,8 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-02 | API Docs 預設關閉 | `/api/docs` 向任何知道 URL 的人暴露完整 API 結構 |
 | 2026-06-02 | 改密碼改用 Modal + `type="password"` | 原 `prompt()` 以明碼顯示密碼輸入；改為頁內 Modal，提供密碼遮罩、確認欄位與前端驗證 |
 | 2026-11-11 | `admin` 為最高管理者（`config.py::SUPER_ADMIN_USERNAME`）；改密碼僅限本人，刪帳號僅 admin；改自己密碼後前端跳轉 `/login`，後台 axios 401 攔截器導向登入 | 原本任一管理者可改/刪任何帳號；改密碼會銷毀該帳號 session，前端未跳轉導致後續請求 401 才發現；`/api/admin/accounts` 回傳 `current` / `super_admin` 供前端隱藏無權限按鈕，後端仍為權限判斷依據 |
+| 2026-11-13 | 合成功能以「選用」形式回歸（部分推翻 2026-06-02 移除 compositor）：模板上傳 + Alpha 槽位偵測 + 客戶自拍頁 `/app` + `/api/v1/customer/*` | 客戶需要自拍並套用版型。破壞性最小設計：**未上傳模板且未開啟 `selfie_config.json` 的 `enabled` 時行為與原本完全相同**；合成結果寫入 `incoming/` 並走既有取件碼、Gallery、縮圖、`protect_static_incoming`，**不新增 `/static/exports`、`/static/qr` 公開路徑**（會繞過取件碼）；偵測用 Pillow + numpy 逐列連續區段 union-find（不引入 OpenCV）；後台沿用 `/api/admin`，僅客戶公開端點使用 `/api/v1/customer`；LINE 沿用「輸入取件碼」流程，**不接受客戶端傳入 LINE userId、不新增 push**；公開端點須通過活動開關、`_check_selfie_rate_limit`（IP 維度）、單張 12 MB / 50M 像素上限、`_composite_semaphore` 併發上限；模板 id 由伺服器產生（`tpl_` + 12 hex），路徑經 regex + `relative_to` 驗證；相機控制與列印不在此階段 |
+| 2026-11-13 | `/app` 路徑的 `Permissions-Policy` 為 `camera=(self)`，其餘路徑維持 `camera=()` | `getUserMedia` 需要相機權限，原全站 `camera=()` 會直接封鎖；僅對 `SELFIE_PAGE_ROUTE` 放寬到同源，其餘頁面不變；CSP 未改動（`/app` 與其他公開頁一樣 `style-src` nonce-only） |
 | 2026-06-03 | 深/淺色模式用 CSS variables + `data-theme` | 無建置工具環境下最輕量；不依賴 Tailwind dark class purge；全域狀態一個 attribute 搞定 |
 | 2026-06-03 | i18n 用純 JS TRANSLATIONS 物件 | 不引入外部函式庫，維持零建置工具原則；管理頁面文字量不大，物件方案已足夠 |
 | 2026-06-03 | login.html / download.html 移除 Tailwind CDN | 這兩頁邏輯極簡，Tailwind CDN 的額外 JS runtime 不值得；改用純 CSS 同時統一到 frame-corner / vert-label / wa-input 視覺語言 |
@@ -230,6 +236,10 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**將 `serve_photo_thumb` 改回固定回傳 WebP — iOS 13 及以下的 Safari 不支援 WebP，`Accept` header 中不含 `image/webp`；移除判斷後舊版 iOS 完全無法顯示取件頁照片；必須保留 `if "image/webp" in accept` 邏輯以自動降格為 JPEG
 - **不得**在 `download.html` 的預覽圖載入改回直接 `<img src="/api/photo/{code}/thumb">` — ngrok free tier 對 `<img>` 子資源請求可能回傳 HTML 警告頁，觸發 `onerror`；必須改用 `fetch()` 並帶 `ngrok-skip-browser-warning: 1` header，收到回應後確認 content-type 以 `image/` 開頭才建立 blob URL 並設為 img.src
 - **不得**在 `delete_incoming` / `clear_incoming` 只清除 `.thumb.webp` — 現在 `serve_photo_thumb` 也會產生 `.thumb.jpg`；兩種縮圖快取必須一起清除，否則舊縮圖殘留 `storage/thumbs/`
+- **不得**在 `customer_composite` 移除活動開關檢查、`_check_selfie_rate_limit`、單張大小上限或 `_composite_semaphore` — 該端點無認證且為 CPU 密集操作，這些是唯一的資源濫用防線
+- **不得**為合成結果新增公開靜態目錄（`/static/exports`、`/static/qr` 等）— 結果必須寫入 `incoming/` 並以取件碼交付，否則繞過取件碼機制
+- **不得**讓客戶端傳入 LINE userId 觸發 push — 任何人可填他人 ID 濫用 bot；LINE 交付維持「客戶輸入取件碼」流程
+- **不得**將 `Permissions-Policy: camera=(self)` 擴展到 `/app` 以外的路徑
 - **不得**在 HTML 模板中使用 `style=""` inline attribute — `style-src 'nonce-*'` 封鎖所有 `style=""` HTML attribute；所有樣式必須以具名 CSS class 形式置入 `<style nonce="__CSP_NONCE__">` 區塊；CSSOM API（`element.style.property = value`）不受此限，可安全使用
 - **不得**在任何 HTML 模板新增無 `nonce="__CSP_NONCE__"` 屬性的 `<style>` 元素 — 缺少 nonce 的 `<style>` 會被 `style-src 'nonce-*'` 封鎖，造成樣式失效；動態注入 CSS 改用預埋空 `<style id="..." nonce="__CSP_NONCE__">` + CSSOM `.textContent` 方式
 - **不得**將原本 `style="display:none"` inline attribute 移至 CSS 規則後，仍以 `element.style.display = ''`（空字串）顯示元素 — 空字串只清除 inline style，CSS 規則 `display:none` 仍生效，元素永遠不可見；正確寫法：`element.style.display = 'block'`（或 `'inline'`、`'flex'` 視元素而定）；同理，以 `element.style.display === 'none'` 判斷元素可見性時，若初始狀態由 CSS 而非 inline 控制，應改用 `getComputedStyle(element).display === 'none'`

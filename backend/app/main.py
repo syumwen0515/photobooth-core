@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Cookie, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, WebSocket, WebSocketDisconnect, Cookie, Request
 from websockets.exceptions import ConnectionClosedError
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +29,7 @@ from datetime import datetime
 from app.watcher import start_watcher
 from app.ngrok_manager import start_tunnel, stop_tunnel, normalize_domain, get_tunnel_url, is_active as ngrok_is_active
 from app import auth, line_bot
+from app.services import composite_service, template_service
 from app.config import (
     NGROK_DEFAULT_PORT,
     APP_TITLE, APP_VERSION, APP_DESCRIPTION,
@@ -49,6 +50,11 @@ from app.config import (
     SECURE_COOKIES, ENABLE_API_DOCS,
     GALLERY_CONFIG_FILE, GALLERY_CONFIG_DEFAULTS, WM_FONT_CANDIDATES, WM_FONT_MARKER_NAME,
     LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW, TRUSTED_PROXY_IPS,
+    TEMPLATES_DIR, TEMPLATES_META_FILE, SELFIE_CONFIG_FILE, SELFIE_CONFIG_DEFAULTS,
+    API_CUSTOMER_PREFIX, SELFIE_PAGE_ROUTE, TEMPLATE_ID_PREFIX,
+    TEMPLATE_MAX_BYTES, TEMPLATE_MAX_SLOTS,
+    COMPOSITE_MAX_UPLOAD_BYTES, COMPOSITE_MAX_CONCURRENCY,
+    SELFIE_RATE_LIMIT, SELFIE_RATE_WINDOW,
 )
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
@@ -62,6 +68,10 @@ _CODE_RATE_WINDOW = 60  # 秒
 
 # ── IP 速率限制（防止分散式暴力破解登入）────────────────────────
 _login_request_log: Dict[str, List[float]] = defaultdict(list)
+
+# ── IP 速率限制（客戶自拍合成屬 CPU 密集操作）───────────────────
+_selfie_request_log: Dict[str, List[float]] = defaultdict(list)
+_composite_semaphore = asyncio.Semaphore(COMPOSITE_MAX_CONCURRENCY)
 
 
 def _get_client_ip(request: Request) -> str:
@@ -82,6 +92,16 @@ def _check_login_rate_limit(ip: str) -> bool:
     if len(_login_request_log[ip]) >= LOGIN_RATE_LIMIT:
         return False
     _login_request_log[ip].append(now)
+    return True
+
+
+def _check_selfie_rate_limit(ip: str) -> bool:
+    now = time.monotonic()
+    cutoff = now - SELFIE_RATE_WINDOW
+    _selfie_request_log[ip] = [t for t in _selfie_request_log[ip] if t > cutoff]
+    if len(_selfie_request_log[ip]) >= SELFIE_RATE_LIMIT:
+        return False
+    _selfie_request_log[ip].append(now)
     return True
 
 
@@ -282,6 +302,64 @@ def _save_gallery_config(data: Dict[str, Any]) -> None:
     _gallery_config_cache = dict(data)
 
 
+# ── 自拍活動設定與模板中繼資料（write-through 記憶體快取）────
+_selfie_config_cache: Optional[Dict[str, Any]] = None
+_templates_cache: Optional[Dict[str, Dict[str, Any]]] = None
+_TEMPLATE_ID_RE = re.compile(rf"^{re.escape(TEMPLATE_ID_PREFIX)}[0-9a-f]{{12}}$")
+
+
+def _load_selfie_config() -> Dict[str, Any]:
+    global _selfie_config_cache
+    if _selfie_config_cache is None:
+        cfg = dict(SELFIE_CONFIG_DEFAULTS)
+        if SELFIE_CONFIG_FILE.exists():
+            try:
+                saved = json.loads(SELFIE_CONFIG_FILE.read_text(encoding="utf-8"))
+                cfg.update({k: v for k, v in saved.items() if k in SELFIE_CONFIG_DEFAULTS})
+            except Exception:
+                pass
+        _selfie_config_cache = cfg
+    return dict(_selfie_config_cache)
+
+
+def _save_selfie_config(data: Dict[str, Any]) -> None:
+    global _selfie_config_cache
+    SELFIE_CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    _selfie_config_cache = dict(data)
+
+
+def _load_templates() -> Dict[str, Dict[str, Any]]:
+    global _templates_cache
+    if _templates_cache is None:
+        loaded: Dict[str, Dict[str, Any]] = {}
+        if TEMPLATES_META_FILE.exists():
+            try:
+                loaded = json.loads(TEMPLATES_META_FILE.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.warning(f"⚠️ 模板資料讀取失敗: {e}")
+        _templates_cache = loaded
+    return _templates_cache
+
+
+def _save_templates(data: Dict[str, Dict[str, Any]]) -> None:
+    global _templates_cache
+    TEMPLATES_META_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    _templates_cache = data
+
+
+def _get_template_or_404(template_id: str) -> Dict[str, Any]:
+    tpl = _load_templates().get(template_id) if _TEMPLATE_ID_RE.match(template_id) else None
+    if tpl is None:
+        raise HTTPException(status_code=404, detail="找不到模板")
+    return tpl
+
+
+def _template_path(template_id: str) -> Path:
+    path = (TEMPLATES_DIR / f"{template_id}.png").resolve()
+    path.relative_to(TEMPLATES_DIR.resolve())
+    return path
+
+
 def _invalidate_public_thumbs() -> None:
     """刪除所有公開縮圖快取（浮水印文字變更後呼叫）。"""
     try:
@@ -421,6 +499,10 @@ async def _session_cleanup_task() -> None:
             del _login_request_log[ip]
         if stale_login_ips:
             logger.debug(f"✓ 已清理 {len(stale_login_ips)} 個過期 IP 速率限制記錄（登入）")
+        selfie_cutoff = now - SELFIE_RATE_WINDOW
+        stale_selfie_ips = [ip for ip, log in _selfie_request_log.items() if not any(t > selfie_cutoff for t in log)]
+        for ip in stale_selfie_ips:
+            del _selfie_request_log[ip]
 
 
 @asynccontextmanager
@@ -493,7 +575,9 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # 僅自拍頁需要相機權限；其餘路徑維持全面禁用
+    camera_policy = "camera=(self)" if request.url.path == SELFIE_PAGE_ROUTE else "camera=()"
+    response.headers["Permissions-Policy"] = f"{camera_policy}, microphone=(), geolocation=()"
     # admin.html uses Tailwind Play CDN which injects <style> at runtime without nonces;
     # restrict unsafe-inline to the authenticated /admin path only.
     if request.url.path == "/admin":
@@ -553,6 +637,22 @@ class GallerySettingsRequest(BaseModel):
     watermark_text: str
 
 
+class SelfieSettingsRequest(BaseModel):
+    enabled: bool
+
+
+class SlotItem(BaseModel):
+    slot_id: int
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+class TemplateSlotsRequest(BaseModel):
+    slots: List[SlotItem]
+
+
 # ==================== 輔助函數 ====================
 
 def validate_filename_safety(filename: str) -> bool:
@@ -594,6 +694,11 @@ async def get_index(request: Request) -> str:
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="頁面不存在")
 
+
+
+@app.get(SELFIE_PAGE_ROUTE, response_class=HTMLResponse, tags=["Pages"])
+async def get_selfie_page(request: Request) -> str:
+    return _apply_nonce(_get_html("app.html"), request.state.csp_nonce)
 
 
 @app.get("/login", response_class=HTMLResponse, tags=["Pages"])
@@ -1393,6 +1498,185 @@ async def serve_photo_thumb(code: str, request: Request) -> FileResponse:
 
 # ==================== 系統重置 API ====================
 
+# ==================== 模板 / 自拍活動 API ====================
+
+def _template_view(tpl: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: tpl[k] for k in ("id", "name", "width", "height", "slots")}
+
+
+@app.get(f"{API_ADMIN_PREFIX}/selfie-settings", tags=["Selfie"])
+async def get_selfie_settings(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
+    _require_auth(pb_session)
+    return _load_selfie_config()
+
+
+@app.post(f"{API_ADMIN_PREFIX}/selfie-settings", tags=["Selfie"])
+async def update_selfie_settings(
+    request: SelfieSettingsRequest,
+    pb_session: Optional[str] = Cookie(default=None),
+) -> Dict[str, str]:
+    _require_auth(pb_session)
+    _save_selfie_config({"enabled": request.enabled})
+    return {"message": "自拍活動設定已儲存"}
+
+
+@app.get(f"{API_ADMIN_PREFIX}/templates", tags=["Templates"])
+async def list_templates(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
+    _require_auth(pb_session)
+    return {"templates": [_template_view(t) for t in _load_templates().values()]}
+
+
+@app.post(f"{API_ADMIN_PREFIX}/templates", tags=["Templates"], summary="上傳模板並自動偵測透明槽位")
+async def upload_template(
+    file: UploadFile = File(...),
+    name: str = Form(default=""),
+    pb_session: Optional[str] = Cookie(default=None),
+) -> Dict[str, Any]:
+    _require_auth(pb_session)
+    content = await file.read(TEMPLATE_MAX_BYTES + 1)
+    if len(content) > TEMPLATE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="模板檔案過大")
+    loop = asyncio.get_running_loop()
+    try:
+        width, height, slots = await loop.run_in_executor(None, template_service.analyze_template, content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not slots:
+        raise HTTPException(status_code=400, detail="未偵測到透明槽位，請確認模板有透明（Alpha）區域")
+    if len(slots) > TEMPLATE_MAX_SLOTS:
+        raise HTTPException(status_code=400, detail=f"槽位數超過上限（{TEMPLATE_MAX_SLOTS}）")
+    templates = _load_templates()
+    template_id = f"{TEMPLATE_ID_PREFIX}{secrets.token_hex(6)}"
+    safe_name = re.sub(r'[^\w\- ]', '', name or Path(file.filename or "").stem).strip()[:40] or "template"
+    try:
+        _template_path(template_id).write_bytes(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"儲存失敗: {e}")
+    tpl = {"id": template_id, "name": safe_name, "width": width, "height": height, "slots": slots}
+    _save_templates({**templates, template_id: tpl})
+    logger.info(f"✓ 模板已上傳: {template_id}（{len(slots)} 個槽位）")
+    return _template_view(tpl)
+
+
+@app.post(f"{API_ADMIN_PREFIX}/templates/{{template_id}}/slots", tags=["Templates"], summary="微調模板槽位")
+async def update_template_slots(
+    template_id: str,
+    request: TemplateSlotsRequest,
+    pb_session: Optional[str] = Cookie(default=None),
+) -> Dict[str, Any]:
+    _require_auth(pb_session)
+    tpl = _get_template_or_404(template_id)
+    slots = request.slots
+    if not 1 <= len(slots) <= TEMPLATE_MAX_SLOTS:
+        raise HTTPException(status_code=400, detail=f"槽位數必須介於 1 到 {TEMPLATE_MAX_SLOTS}")
+    if len({s.slot_id for s in slots}) != len(slots) or any(s.slot_id < 1 for s in slots):
+        raise HTTPException(status_code=400, detail="slot_id 必須為不重複的正整數")
+    for s in slots:
+        if s.x < 0 or s.y < 0 or s.width < 1 or s.height < 1 \
+                or s.x + s.width > tpl["width"] or s.y + s.height > tpl["height"]:
+            raise HTTPException(status_code=400, detail=f"槽位 {s.slot_id} 超出模板範圍")
+    updated = {**tpl, "slots": [s.model_dump() for s in sorted(slots, key=lambda s: s.slot_id)]}
+    _save_templates({**_load_templates(), template_id: updated})
+    return _template_view(updated)
+
+
+@app.delete(f"{API_ADMIN_PREFIX}/templates/{{template_id}}", tags=["Templates"])
+async def delete_template(template_id: str, pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, str]:
+    _require_auth(pb_session)
+    _get_template_or_404(template_id)
+    _template_path(template_id).unlink(missing_ok=True)
+    _save_templates({k: v for k, v in _load_templates().items() if k != template_id})
+    return {"message": "模板已刪除"}
+
+
+@app.get(f"{API_ADMIN_PREFIX}/templates/{{template_id}}/image", tags=["Templates"])
+async def get_template_image_admin(template_id: str, pb_session: Optional[str] = Cookie(default=None)) -> FileResponse:
+    _require_auth(pb_session)
+    _get_template_or_404(template_id)
+    return FileResponse(_template_path(template_id), media_type="image/png")
+
+
+@app.get(f"{API_CUSTOMER_PREFIX}/templates", tags=["Selfie"], summary="客戶端：可用模板列表")
+async def customer_list_templates(request: Request) -> Dict[str, Any]:
+    if not _check_code_rate_limit(_get_client_ip(request)):
+        raise HTTPException(status_code=429, detail="請求過於頻繁，請稍後再試")
+    if not _load_selfie_config()["enabled"]:
+        return {"enabled": False, "templates": []}
+    return {"enabled": True, "templates": [_template_view(t) for t in _load_templates().values()]}
+
+
+@app.get(f"{API_CUSTOMER_PREFIX}/templates/{{template_id}}/image", tags=["Selfie"])
+async def customer_template_image(template_id: str, request: Request) -> FileResponse:
+    if not _check_code_rate_limit(_get_client_ip(request)):
+        raise HTTPException(status_code=429, detail="請求過於頻繁，請稍後再試")
+    if not _load_selfie_config()["enabled"]:
+        raise HTTPException(status_code=403, detail="自拍活動尚未開放")
+    _get_template_or_404(template_id)
+    return FileResponse(
+        _template_path(template_id),
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+def _composite_job(template_id: str, slots: List[Dict[str, int]], raw_photos: List[bytes]) -> str:
+    """同步合成並寫入 incoming/，回傳檔名；供 run_in_executor 呼叫。"""
+    template = template_service.open_template(_template_path(template_id).read_bytes())
+    photos = {
+        slot["slot_id"]: composite_service.decode_photo(data)
+        for slot, data in zip(slots, raw_photos)
+    }
+    jpeg = composite_service.encode_jpeg(composite_service.compose(template, slots, photos))
+    ts = int(time.time() * 1000)
+    suffix = 0
+    while True:
+        name = f"{ts}_selfie{f'_{suffix}' if suffix else ''}.jpg"
+        try:
+            with open(INCOMING_DIR / name, "xb") as f:
+                f.write(jpeg)
+            return name
+        except FileExistsError:
+            suffix += 1
+
+
+@app.post(f"{API_CUSTOMER_PREFIX}/composite", tags=["Selfie"], summary="客戶端：自拍合成")
+async def customer_composite(
+    request: Request,
+    template_id: str = Form(...),
+    files: List[UploadFile] = File(...),
+) -> Dict[str, Any]:
+    if not _check_selfie_rate_limit(_get_client_ip(request)):
+        raise HTTPException(status_code=429, detail="請求過於頻繁，請稍後再試")
+    if not _load_selfie_config()["enabled"]:
+        raise HTTPException(status_code=403, detail="自拍活動尚未開放")
+    tpl = _get_template_or_404(template_id)
+    slots = tpl["slots"]
+    if len(files) != len(slots):
+        raise HTTPException(status_code=400, detail=f"此模板需要 {len(slots)} 張照片")
+    raw_photos: List[bytes] = []
+    for f in files:
+        data = await f.read(COMPOSITE_MAX_UPLOAD_BYTES + 1)
+        if len(data) > COMPOSITE_MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="照片檔案過大")
+        raw_photos.append(data)
+    loop = asyncio.get_running_loop()
+    try:
+        async with _composite_semaphore:
+            filename = await loop.run_in_executor(None, _composite_job, template_id, slots, raw_photos)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="照片格式不支援或尺寸過大")
+    code = _assign_code(filename)
+    await manager.broadcast({
+        "type": WS_MESSAGE_TYPE_NEW_INCOMING,
+        "filename": filename,
+        "url": f"{STATIC_INCOMING_ROUTE}/{filename}",
+        "code": code,
+        "timestamp": time.time(),
+    })
+    logger.info(f"✓ 客戶自拍合成: {filename} → {code}")
+    return {"code": code, "download_url": f"/download/{code}"}
+
+
 @app.post(f"{API_ADMIN_PREFIX}/reset", tags=["System"])
 async def reset_system(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
     _require_auth(pb_session)
@@ -1477,6 +1761,22 @@ async def reset_system(pb_session: Optional[str] = Cookie(default=None)) -> Dict
         results["gallery_config"] = "已重置為預設值"
     except Exception as e:
         results["gallery_config"] = f"失敗: {e}"
+
+    # 重置自拍活動設定與模板
+    try:
+        global _selfie_config_cache, _templates_cache
+        removed = 0
+        for f in TEMPLATES_DIR.iterdir():
+            if f.is_file():
+                f.unlink()
+                removed += 1
+        for f in (SELFIE_CONFIG_FILE, TEMPLATES_META_FILE):
+            f.unlink(missing_ok=True)
+        _selfie_config_cache = None
+        _templates_cache = None
+        results["selfie"] = f"已重置，刪除 {removed} 個模板" if removed else "已重置為預設值"
+    except Exception as e:
+        results["selfie"] = f"失敗: {e}"
 
     # 清除自訂字型
     try:

@@ -155,5 +155,26 @@ LOGIN_RATE_WINDOW: int = 60  # 秒
 _trusted_proxy_env = os.getenv("TRUSTED_PROXY_IPS", "")
 TRUSTED_PROXY_IPS: set = {ip.strip() for ip in _trusted_proxy_env.split(",") if ip.strip()}
 
-for directory in [BG_DIR, THUMB_DIR, FONTS_DIR]:
+# 模板合成 / 客戶自拍設定
+TEMPLATES_DIR = STORAGE_DIR / "templates"
+TEMPLATES_META_FILE = STORAGE_DIR / "templates.json"
+SELFIE_CONFIG_FILE = STORAGE_DIR / "selfie_config.json"
+SELFIE_CONFIG_DEFAULTS: dict = {"enabled": False}
+API_CUSTOMER_PREFIX = "/api/v1/customer"
+SELFIE_PAGE_ROUTE = "/app"
+TEMPLATE_ID_PREFIX = "tpl_"
+TEMPLATE_MAX_BYTES = 20 * 1024 * 1024     # 模板 PNG 大小上限
+TEMPLATE_MAX_PIXELS = 36_000_000          # 模板像素上限（防 decompression bomb）
+TEMPLATE_MAX_SLOTS = 12                   # 單一模板槽位數上限
+TEMPLATE_ALPHA_THRESHOLD = 10             # alpha <= 此值視為透明
+TEMPLATE_MAX_RUNS = 200_000               # 透明連續區段上限（防止紋理型 alpha 拖垮偵測）
+TEMPLATE_MIN_SLOT_AREA = 400              # 小於此面積（px）的透明區域視為雜訊
+COMPOSITE_MAX_UPLOAD_BYTES = 12 * 1024 * 1024   # 客戶單張自拍大小上限
+COMPOSITE_MAX_PHOTO_PIXELS = 50_000_000         # 單張照片像素上限
+COMPOSITE_MAX_CONCURRENCY = 2                   # 同時合成的工作數
+COMPOSITE_JPEG_QUALITY = 92
+SELFIE_RATE_LIMIT = int(os.getenv("SELFIE_RATE_LIMIT", "6"))  # 每個 IP 每分鐘最多合成 N 次
+SELFIE_RATE_WINDOW = 60  # 秒
+
+for directory in [BG_DIR, THUMB_DIR, FONTS_DIR, TEMPLATES_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
