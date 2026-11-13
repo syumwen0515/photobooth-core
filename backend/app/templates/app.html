@@ -85,10 +85,9 @@
         .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
         .btn-primary { background: rgba(43, 43, 43, 0.82); color: #fff; border-color: transparent; }
         .actions { display: flex; flex-direction: column; gap: 10px; }
-        .result-layout, .result-preview, .result-pickup, .result-code-group {
+        .result-layout, .result-qr-panel, .result-pickup, .result-code-group {
             display: flex; flex-direction: column; gap: 14px;
         }
-        .result-photo { display: block; max-width: 100%; max-height: 45vh; object-fit: contain; margin: 0 auto; }
         .result-code { text-align: center; font-size: 1.4rem; letter-spacing: 0.2em; font-weight: 400; }
         .result-qr { display: block; width: min(100%, 240px); height: auto; margin: 0 auto; image-rendering: pixelated; }
         .result-link { text-decoration: none; }
@@ -96,10 +95,9 @@
         @media (orientation: landscape) and (min-width: 700px) {
             .app-card.result-active { max-width: 760px; }
             .result-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 280px); gap: 32px; align-items: stretch; }
-            .result-preview, .result-pickup { justify-content: center; }
-            .result-photo { max-height: 65vh; }
-            .result-code-group { order: 1; }
-            .result-actions { order: 2; }
+            .result-qr-panel { justify-content: center; }
+            .result-qr { width: auto; height: 100%; max-width: 100%; aspect-ratio: 1; object-fit: contain; }
+            .result-pickup { justify-content: space-between; }
         }
 
         @keyframes fadeUp {
@@ -155,20 +153,18 @@
     <section id="view-result" hidden>
         <p class="hint" data-i18n="app.result">拍貼完成</p>
         <div class="result-layout">
-            <div class="result-preview">
-                <img id="result-photo" class="result-photo" alt="" hidden>
-                <p id="result-photo-error" class="error" hidden data-i18n="app.previewFail">預覽載入失敗，仍可使用取件碼或連結取件。</p>
+            <div class="result-qr-panel">
+                <canvas id="result-qr" class="result-qr" role="img" aria-label="QR code" hidden></canvas>
             </div>
             <div class="result-pickup">
+                <p id="result-qr-error" class="error" hidden data-i18n="app.qrFail">QR code 產生失敗，請使用取件碼或連結。</p>
+                <p id="result-qr-hint" class="hint" hidden data-i18n="app.qrHint">掃描 QR code 取件；掃描裝置需能連線至此網站。</p>
+                <p id="result-local-hint" class="hint" hidden data-i18n="app.localHint">localhost 無法供其他裝置掃描取件，請改用可連線的 HTTPS 網址。</p>
                 <div class="result-code-group">
                     <p class="hint" data-i18n="app.pickupCode">取件碼</p>
                     <p id="result-code" class="result-code"></p>
                 </div>
-                <canvas id="result-qr" class="result-qr" role="img" aria-label="QR code" hidden></canvas>
-                <p id="result-qr-error" class="error" hidden data-i18n="app.qrFail">QR code 產生失敗，請使用取件碼或連結。</p>
-                <p id="result-qr-hint" class="hint" hidden data-i18n="app.qrHint">掃描 QR code 取件；掃描裝置需能連線至此網站。</p>
-                <p id="result-local-hint" class="hint" hidden data-i18n="app.localHint">localhost 無法供其他裝置掃描取件，請改用可連線的 HTTPS 網址。</p>
-                <div class="actions result-actions">
+                <div class="actions">
                     <a id="result-link" class="btn result-link" data-i18n="app.openPickup">開啟取件頁</a>
                     <button id="btn-again" class="btn btn-primary" data-i18n="app.again">再次拍攝</button>
                 </div>
@@ -208,8 +204,6 @@
             'app.retry': '重新載入',
             'app.result': '拍貼完成',
             'app.pickupCode': '取件碼',
-            'app.previewFail': '預覽載入失敗，仍可使用取件碼或連結取件。',
-            'app.previewAlt': '合成照片預覽',
             'app.qrFail': 'QR code 產生失敗，請使用取件碼或連結。',
             'app.qrHint': '掃描 QR code 取件；掃描裝置需能連線至此網站。',
             'app.localHint': 'localhost 無法供其他裝置掃描取件，請改用可連線的 HTTPS 網址。',
@@ -237,8 +231,6 @@
             'app.retry': 'Retry',
             'app.result': 'Your photo is ready',
             'app.pickupCode': 'Pickup code',
-            'app.previewFail': 'Preview unavailable. Use the pickup code or link to retrieve your photo.',
-            'app.previewAlt': 'Composed photo preview',
             'app.qrFail': 'QR code unavailable. Use the pickup code or link instead.',
             'app.qrHint': 'Scan the QR code to retrieve your photo. The scanning device must be able to reach this website.',
             'app.localHint': 'Other devices cannot scan a localhost link. Use a reachable HTTPS address instead.',
@@ -275,8 +267,6 @@
     var _stream = null;
     var _shots = [];          // [{blob, url}]
     var _busy = false;
-    var _resultUrl = null;
-    var _resultGeneration = 0;
     var _templateUrls = [];
     var _templateGeneration = 0;
 
@@ -550,12 +540,6 @@
 
     /* ── Result ── */
     function clearResult() {
-        _resultGeneration += 1;
-        if (_resultUrl) URL.revokeObjectURL(_resultUrl);
-        _resultUrl = null;
-        $('result-photo').removeAttribute('src');
-        $('result-photo').hidden = true;
-        $('result-photo-error').hidden = true;
         $('result-qr').hidden = true;
         $('result-qr-hint').hidden = true;
         $('result-qr-error').hidden = true;
@@ -584,29 +568,9 @@
         $('result-qr-hint').hidden = false;
     }
 
-    async function loadResultPreview(code, generation) {
-        try {
-            var r = await fetch('/api/photo/' + encodeURIComponent(code) + '/thumb', { headers: IMAGE_HEADERS });
-            if (!r.ok || !(r.headers.get('content-type') || '').toLowerCase().startsWith('image/')) throw new Error('preview');
-            var blob = await r.blob();
-            if (generation !== _resultGeneration) return;
-            _resultUrl = URL.createObjectURL(blob);
-            $('result-photo').onerror = function () {
-                if (generation !== _resultGeneration) return;
-                $('result-photo').hidden = true;
-                $('result-photo-error').hidden = false;
-            };
-            $('result-photo').src = _resultUrl;
-            $('result-photo').hidden = false;
-        } catch (e) {
-            if (generation === _resultGeneration) $('result-photo-error').hidden = false;
-        }
-    }
-
     function showResult(data) {
         clearResult();
         $('result-code').textContent = data.code;
-        $('result-photo').alt = t('app.previewAlt');
         var pickupUrl = new URL(data.download_url, window.location.origin);
         $('result-link').href = pickupUrl.href;
         var hostname = window.location.hostname.toLowerCase();
@@ -618,7 +582,6 @@
             console.error('QR code generation failed:', e);
             $('result-qr-error').hidden = false;
         }
-        loadResultPreview(data.code, _resultGeneration);
     }
 
     $('btn-again').addEventListener('click', function () {
