@@ -85,10 +85,21 @@
         .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
         .btn-primary { background: rgba(43, 43, 43, 0.82); color: #fff; border-color: transparent; }
         .actions { display: flex; flex-direction: column; gap: 10px; }
+        .result-layout, .result-preview, .result-pickup, .result-code-group {
+            display: flex; flex-direction: column; gap: 14px;
+        }
         .result-photo { display: block; max-width: 100%; max-height: 45vh; object-fit: contain; margin: 0 auto; }
         .result-code { text-align: center; font-size: 1.4rem; letter-spacing: 0.2em; font-weight: 400; }
         .result-qr { display: block; width: min(100%, 240px); height: auto; margin: 0 auto; image-rendering: pixelated; }
         .result-link { text-decoration: none; }
+
+        @media (orientation: landscape) and (min-width: 700px) {
+            .app-card.result-active { max-width: 760px; }
+            .result-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 280px); gap: 32px; align-items: center; }
+            .result-photo { max-height: 65vh; }
+            .result-code-group { order: 1; }
+            .result-actions { order: 2; }
+        }
 
         @keyframes fadeUp {
             from { opacity: 0; transform: translateY(14px); }
@@ -142,17 +153,25 @@
 
     <section id="view-result" hidden>
         <p class="hint" data-i18n="app.result">拍貼完成</p>
-        <img id="result-photo" class="result-photo" alt="" hidden>
-        <p id="result-photo-error" class="error" hidden data-i18n="app.previewFail">預覽載入失敗，仍可使用取件碼或連結取件。</p>
-        <p class="hint" data-i18n="app.pickupCode">取件碼</p>
-        <p id="result-code" class="result-code"></p>
-        <canvas id="result-qr" class="result-qr" role="img" aria-label="QR code" hidden></canvas>
-        <p id="result-qr-error" class="error" hidden data-i18n="app.qrFail">QR code 產生失敗，請使用取件碼或連結。</p>
-        <p id="result-qr-hint" class="hint" hidden data-i18n="app.qrHint">掃描 QR code 取件；掃描裝置需能連線至此網站。</p>
-        <p id="result-local-hint" class="hint" hidden data-i18n="app.localHint">localhost 無法供其他裝置掃描取件，請改用可連線的 HTTPS 網址。</p>
-        <div class="actions">
-            <a id="result-link" class="btn result-link" data-i18n="app.openPickup">開啟取件頁</a>
-            <button id="btn-again" class="btn btn-primary" data-i18n="app.again">再次拍攝</button>
+        <div class="result-layout">
+            <div class="result-preview">
+                <img id="result-photo" class="result-photo" alt="" hidden>
+                <p id="result-photo-error" class="error" hidden data-i18n="app.previewFail">預覽載入失敗，仍可使用取件碼或連結取件。</p>
+            </div>
+            <div class="result-pickup">
+                <div class="result-code-group">
+                    <p class="hint" data-i18n="app.pickupCode">取件碼</p>
+                    <p id="result-code" class="result-code"></p>
+                </div>
+                <canvas id="result-qr" class="result-qr" role="img" aria-label="QR code" hidden></canvas>
+                <p id="result-qr-error" class="error" hidden data-i18n="app.qrFail">QR code 產生失敗，請使用取件碼或連結。</p>
+                <p id="result-qr-hint" class="hint" hidden data-i18n="app.qrHint">掃描 QR code 取件；掃描裝置需能連線至此網站。</p>
+                <p id="result-local-hint" class="hint" hidden data-i18n="app.localHint">localhost 無法供其他裝置掃描取件，請改用可連線的 HTTPS 網址。</p>
+                <div class="actions result-actions">
+                    <a id="result-link" class="btn result-link" data-i18n="app.openPickup">開啟取件頁</a>
+                    <button id="btn-again" class="btn btn-primary" data-i18n="app.again">再次拍攝</button>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -265,6 +284,7 @@
         ['loading', 'closed', 'insecure', 'select', 'camera', 'result'].forEach(function (v) {
             $('view-' + v).hidden = (v !== name);
         });
+        document.querySelector('.app-card').classList.toggle('result-active', name === 'result');
     }
     function setError(msg) { $('error').textContent = msg || ''; }
 
