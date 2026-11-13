@@ -245,6 +245,11 @@
     var API = '/api/v1/customer';
     var HEADERS = { 'ngrok-skip-browser-warning': '1' };
     var MAX_SIDE = 1600;
+    var WEBP_SUPPORTED = document.createElement('canvas')
+        .toDataURL('image/webp').startsWith('data:image/webp');
+    var IMAGE_HEADERS = Object.assign({}, HEADERS, {
+        Accept: WEBP_SUPPORTED ? 'image/webp,image/png,image/*' : 'image/png,image/*'
+    });
     var COUNTDOWN_SECONDS = 3;
     var _template = null;
     var _stream = null;
@@ -314,7 +319,7 @@
     }
 
     function loadTemplateImage(id, img, generation) {
-        fetch(API + '/templates/' + id + '/image', { headers: HEADERS })
+        fetch(API + '/templates/' + id + '/image', { headers: IMAGE_HEADERS })
             .then(function (r) { if (!r.ok) throw new Error(); return r.blob(); })
             .then(function (blob) {
                 if (generation !== _templateGeneration) return;
@@ -425,8 +430,32 @@
         });
     }
 
-    function addShot(blob) {
-        var url = URL.createObjectURL(blob);
+    function _makePreviewBlob(blob) {
+        if (!WEBP_SUPPORTED) return Promise.resolve(blob);
+        var sourceUrl = URL.createObjectURL(blob);
+        return new Promise(function (resolve) {
+            var img = new Image();
+            img.onload = function () {
+                var canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                URL.revokeObjectURL(sourceUrl);
+                canvas.toBlob(function (webp) {
+                    resolve(webp && webp.type === 'image/webp' ? webp : blob);
+                }, 'image/webp', 0.9);
+            };
+            img.onerror = function () {
+                URL.revokeObjectURL(sourceUrl);
+                resolve(blob);
+            };
+            img.src = sourceUrl;
+        });
+    }
+
+    async function addShot(blob) {
+        var previewBlob = await _makePreviewBlob(blob);
+        var url = URL.createObjectURL(previewBlob);
         _shots.push({ blob: blob, url: url });
         var thumb = document.createElement('img');
         thumb.src = url;
@@ -444,7 +473,7 @@
         setError('');
         try {
             for (var i = 0; i < files.length && _shots.length < _template.slots.length; i++) {
-                addShot(await prepareImageFile(files[i]));
+                await addShot(await prepareImageFile(files[i]));
             }
         } catch (err) {
             setError(t('app.fail'));
@@ -475,7 +504,7 @@
         try {
             await runCountdown();
             var blob = await captureFrame();
-            addShot(blob);
+            await addShot(blob);
         } catch (e) {
             setError(t('app.fail'));
         } finally {
@@ -536,7 +565,7 @@
 
     async function loadResultPreview(code, generation) {
         try {
-            var r = await fetch('/api/photo/' + encodeURIComponent(code) + '/thumb', { headers: HEADERS });
+            var r = await fetch('/api/photo/' + encodeURIComponent(code) + '/thumb', { headers: IMAGE_HEADERS });
             if (!r.ok || !(r.headers.get('content-type') || '').toLowerCase().startsWith('image/')) throw new Error('preview');
             var blob = await r.blob();
             if (generation !== _resultGeneration) return;

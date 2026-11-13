@@ -1008,6 +1008,11 @@
 
 <script nonce="__CSP_NONCE__">
     const API_URL = '';
+    const WEBP_SUPPORTED = (() => {
+        const canvas = document.createElement('canvas');
+        return canvas.toDataURL('image/webp').startsWith('data:image/webp');
+    })();
+    const IMAGE_ACCEPT = WEBP_SUPPORTED ? 'image/webp,image/png,image/*' : 'image/png,image/*';
 
     // ═══════════════════════════════════════════════
     // i18n — Translations
@@ -1723,7 +1728,10 @@
         const img = document.createElement('img');
         img.alt = tpl.name;
         preview.appendChild(img);
-        axios.get(`${API_URL}/api/admin/templates/${tpl.id}/image`, { responseType: 'blob' })
+        axios.get(`${API_URL}/api/admin/templates/${tpl.id}/image`, {
+            responseType: 'blob',
+            headers: { Accept: IMAGE_ACCEPT }
+        })
             .then(r => { img.src = URL.createObjectURL(r.data); })
             .catch(() => {});
 
@@ -2382,8 +2390,19 @@
             preview.classList.remove('hidden');
             noBg.classList.add('hidden');
             deleteBtn.classList.remove('hidden');
-            img.src = url + '?' + Date.now();
+            const cacheBust = Date.now();
+            const fallbackUrl = url + '?' + cacheBust;
+            const webpUrl = url.replace(/\.jpg$/, '.webp') + '?' + cacheBust;
+            img.onerror = function () {
+                if (WEBP_SUPPORTED && img.src !== new URL(fallbackUrl, location.href).href) {
+                    img.src = fallbackUrl;
+                } else {
+                    img.onerror = null;
+                }
+            };
+            img.src = WEBP_SUPPORTED ? webpUrl : fallbackUrl;
         } else {
+            img.onerror = null;
             preview.classList.add('hidden');
             noBg.classList.remove('hidden');
             deleteBtn.classList.add('hidden');

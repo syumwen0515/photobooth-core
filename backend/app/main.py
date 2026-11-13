@@ -58,6 +58,8 @@ from app.config import (
     TEMPLATE_MAX_BYTES, TEMPLATE_MAX_SLOTS,
     COMPOSITE_MAX_UPLOAD_BYTES, COMPOSITE_MAX_CONCURRENCY,
     SELFIE_RATE_LIMIT, SELFIE_RATE_WINDOW,
+    WEBP_FORMAT, WEBP_MEDIA_TYPE, WEBP_EXTENSION, WEBP_METHOD,
+    JPEG_FORMAT, JPEG_MEDIA_TYPE, JPEG_EXTENSION, PNG_MEDIA_TYPE, THUMB_JPEG_QUALITY,
 )
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
@@ -368,11 +370,12 @@ def _template_path(template_id: str) -> Path:
 def _invalidate_public_thumbs() -> None:
     """刪除所有公開縮圖快取（浮水印文字變更後呼叫）。"""
     try:
-        for p in THUMB_DIR.glob("pub_*.webp"):
-            try:
-                p.unlink()
-            except OSError:
-                pass
+        for pattern in (f"pub_*{WEBP_EXTENSION}", f"pub_*{JPEG_EXTENSION}"):
+            for p in THUMB_DIR.glob(pattern):
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
     except Exception as e:
         logger.warning(f"⚠️ 清除公開縮圖快取失敗: {e}")
 
@@ -1039,7 +1042,7 @@ async def get_gallery_list() -> Dict[str, Any]:
 
 
 @app.get("/api/gallery/thumb/{filename}", tags=["Public"], summary="公開照片縮圖（含浮水印）")
-async def get_gallery_thumb_public(filename: str) -> FileResponse:
+async def get_gallery_thumb_public(filename: str, request: Request = None) -> FileResponse:
     if not _load_gallery_config().get("enabled", True):
         raise HTTPException(status_code=404, detail="公開照片集未啟用")
     if not validate_filename_safety(filename):
@@ -1052,19 +1055,23 @@ async def get_gallery_thumb_public(filename: str) -> FileResponse:
     except ValueError:
         raise HTTPException(status_code=400, detail="路徑驗證失敗")
     # 以 hash 命名快取，避免中文/特殊字元檔名在不同 OS 的相容問題
-    thumb_path = _pub_thumb_path(filename)
+    accept = request.headers.get("accept", "") if request else WEBP_MEDIA_TYPE
+    fmt = WEBP_FORMAT if WEBP_MEDIA_TYPE in accept else JPEG_FORMAT
+    thumb_path = _pub_thumb_path(filename, fmt)
     if not thumb_path.exists():
         try:
             gallery_cfg = _load_gallery_config()
             wm_text = gallery_cfg.get("watermark_text") or GALLERY_CONFIG_DEFAULTS["watermark_text"]
-            await _ensure_thumb(thumb_path, _generate_public_thumbnail, src_path, thumb_path, wm_text)
+            await _ensure_thumb(
+                thumb_path, _generate_public_thumbnail, src_path, thumb_path, wm_text, fmt,
+            )
         except Exception as e:
             logger.error(f"公開縮圖生成失敗 {filename}: {e}")
             raise HTTPException(status_code=500, detail="縮圖生成失敗")
     return FileResponse(
         str(thumb_path),
-        media_type="image/webp",
-        headers={"Cache-Control": "private, max-age=86400"},
+        media_type=WEBP_MEDIA_TYPE if fmt == WEBP_FORMAT else JPEG_MEDIA_TYPE,
+        headers={"Cache-Control": "private, max-age=86400", "Vary": "Accept"},
     )
 
 
@@ -1205,11 +1212,37 @@ def _generate_thumbnail(src_path: Path, thumb_path: Path, fmt: str = "WEBP") -> 
     img = _open_for_thumb(src_path, "RGB")
     img.thumbnail((THUMB_SIZE, THUMB_SIZE), Image.LANCZOS)
     buf = io.BytesIO()
-    if fmt == "JPEG":
-        img.save(buf, "JPEG", quality=82, optimize=True)
+    if fmt == JPEG_FORMAT:
+        img.save(buf, JPEG_FORMAT, quality=THUMB_JPEG_QUALITY, optimize=True)
     else:
-        img.save(buf, "WEBP", quality=72, method=4)
+        img.save(buf, WEBP_FORMAT, quality=72, method=4)
     thumb_path.write_bytes(buf.getvalue())
+
+
+def _template_webp_path(template_id: str) -> Path:
+    return THUMB_DIR / f"{template_id}{WEBP_EXTENSION}"
+
+
+def _generate_template_webp(src_path: Path, webp_path: Path) -> None:
+    img = Image.open(io.BytesIO(src_path.read_bytes())).convert("RGBA")
+    buf = io.BytesIO()
+    img.save(buf, WEBP_FORMAT, lossless=True, method=WEBP_METHOD)
+    webp_path.parent.mkdir(parents=True, exist_ok=True)
+    webp_path.write_bytes(buf.getvalue())
+
+
+async def _template_image_response(template_id: str, accept: str) -> FileResponse:
+    template_path = _template_path(template_id)
+    headers = {"Vary": "Accept", "Cache-Control": "private, max-age=3600"}
+    if WEBP_MEDIA_TYPE in accept:
+        webp_path = _template_webp_path(template_id)
+        try:
+            await _ensure_thumb(webp_path, _generate_template_webp, template_path, webp_path)
+        except Exception as e:
+            logger.error(f"模板 WebP 預覽生成失敗 {template_id}: {e}")
+            raise HTTPException(status_code=500, detail="模板預覽生成失敗")
+        return FileResponse(str(webp_path), media_type=WEBP_MEDIA_TYPE, headers=headers)
+    return FileResponse(str(template_path), media_type=PNG_MEDIA_TYPE, headers=headers)
 
 
 @functools.lru_cache(maxsize=1)
@@ -1240,13 +1273,19 @@ def _wm_font(size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default(size=size)
 
 
-def _pub_thumb_path(filename: str) -> Path:
+def _pub_thumb_path(filename: str, fmt: str = WEBP_FORMAT) -> Path:
     """以 MD5 hash 產生公開縮圖快取路徑，避免中文/特殊字元問題。"""
     key = hashlib.md5(filename.encode("utf-8")).hexdigest()
-    return THUMB_DIR / f"pub_{key}.webp"
+    extension = WEBP_EXTENSION if fmt == WEBP_FORMAT else JPEG_EXTENSION
+    return THUMB_DIR / f"pub_{key}{extension}"
 
 
-def _generate_public_thumbnail(src_path: Path, thumb_path: Path, watermark_text: str = "") -> None:
+def _generate_public_thumbnail(
+    src_path: Path,
+    thumb_path: Path,
+    watermark_text: str = "",
+    fmt: str = WEBP_FORMAT,
+) -> None:
     """縮圖 + 浮水印，供公開照片集使用（與管理端縮圖分開快取）。"""
     img = _open_for_thumb(src_path, "RGBA")
     img.thumbnail((THUMB_SIZE, THUMB_SIZE), Image.LANCZOS)
@@ -1284,12 +1323,19 @@ def _generate_public_thumbnail(src_path: Path, thumb_path: Path, watermark_text:
 
     result = Image.alpha_composite(img, cropped).convert("RGB")
     buf = io.BytesIO()
-    result.save(buf, "WEBP", quality=72, method=4)
+    if fmt == JPEG_FORMAT:
+        result.save(buf, JPEG_FORMAT, quality=THUMB_JPEG_QUALITY, optimize=True)
+    else:
+        result.save(buf, WEBP_FORMAT, quality=72, method=4)
     thumb_path.write_bytes(buf.getvalue())
 
 
 @app.get(f"{API_ADMIN_PREFIX}/incoming/thumb/{{filename}}", tags=["Incoming"])
-async def get_incoming_thumb(filename: str, pb_session: Optional[str] = Cookie(default=None)) -> FileResponse:
+async def get_incoming_thumb(
+    filename: str,
+    request: Request,
+    pb_session: Optional[str] = Cookie(default=None),
+) -> FileResponse:
     _require_auth(pb_session)
     if not validate_filename_safety(filename):
         raise HTTPException(status_code=400, detail="無效的檔案名稱")
@@ -1301,18 +1347,20 @@ async def get_incoming_thumb(filename: str, pb_session: Optional[str] = Cookie(d
     except ValueError:
         raise HTTPException(status_code=400, detail="路徑驗證失敗")
 
-    thumb_path = THUMB_DIR / f"{filename}.thumb.webp"
+    fmt = WEBP_FORMAT if WEBP_MEDIA_TYPE in request.headers.get("accept", "") else JPEG_FORMAT
+    extension = WEBP_EXTENSION if fmt == WEBP_FORMAT else JPEG_EXTENSION
+    thumb_path = THUMB_DIR / f"{filename}.thumb{extension}"
     if not thumb_path.exists():
         try:
-            await _ensure_thumb(thumb_path, _generate_thumbnail, src_path, thumb_path)
+            await _ensure_thumb(thumb_path, _generate_thumbnail, src_path, thumb_path, fmt)
         except Exception as e:
             logger.error(f"縮圖生成失敗 {filename}: {e}")
             raise HTTPException(status_code=500, detail="縮圖生成失敗")
 
     return FileResponse(
         str(thumb_path),
-        media_type="image/webp",
-        headers={"Cache-Control": "private, max-age=86400"},
+        media_type=WEBP_MEDIA_TYPE if fmt == WEBP_FORMAT else JPEG_MEDIA_TYPE,
+        headers={"Cache-Control": "private, max-age=86400", "Vary": "Accept"},
     )
 
 
@@ -1329,15 +1377,16 @@ async def delete_incoming(filename: str, pb_session: Optional[str] = Cookie(defa
     except ValueError:
         raise HTTPException(status_code=400, detail="檔案路徑驗證失敗")
     file_path.unlink()
-    for thumb_path in [
-        THUMB_DIR / f"{filename}.thumb.webp",
-        THUMB_DIR / f"{filename}.thumb.jpg",
-    ]:
+    for thumb_path in (
+        THUMB_DIR / f"{filename}.thumb{WEBP_EXTENSION}",
+        THUMB_DIR / f"{filename}.thumb{JPEG_EXTENSION}",
+    ):
         if thumb_path.exists():
             thumb_path.unlink()
-    pub_thumb = _pub_thumb_path(filename)
-    if pub_thumb.exists():
-        pub_thumb.unlink()
+    for fmt in (WEBP_FORMAT, JPEG_FORMAT):
+        pub_thumb = _pub_thumb_path(filename, fmt)
+        if pub_thumb.exists():
+            pub_thumb.unlink()
     _gallery_list_cache.clear()
     if filename in _photo_codes:
         code = _photo_codes.pop(filename)
@@ -1356,14 +1405,15 @@ async def clear_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Di
                 p.unlink()
                 deleted.append(p.name)
                 for thumb_path in [
-                    THUMB_DIR / f"{p.name}.thumb.webp",
-                    THUMB_DIR / f"{p.name}.thumb.jpg",
+                    THUMB_DIR / f"{p.name}.thumb{WEBP_EXTENSION}",
+                    THUMB_DIR / f"{p.name}.thumb{JPEG_EXTENSION}",
                 ]:
                     if thumb_path.exists():
                         thumb_path.unlink()
-                pub_thumb = _pub_thumb_path(p.name)
-                if pub_thumb.exists():
-                    pub_thumb.unlink()
+                for fmt in (WEBP_FORMAT, JPEG_FORMAT):
+                    pub_thumb = _pub_thumb_path(p.name, fmt)
+                    if pub_thumb.exists():
+                        pub_thumb.unlink()
                 if p.name in _photo_codes:
                     code = _photo_codes.pop(p.name)
                     _code_to_file.pop(code, None)
@@ -1715,15 +1765,20 @@ async def delete_template(template_id: str, pb_session: Optional[str] = Cookie(d
     _require_auth(pb_session)
     _get_template_or_404(template_id)
     _template_path(template_id).unlink(missing_ok=True)
+    _template_webp_path(template_id).unlink(missing_ok=True)
     _save_templates({k: v for k, v in _load_templates().items() if k != template_id})
     return {"message": "模板已刪除"}
 
 
 @app.get(f"{API_ADMIN_PREFIX}/templates/{{template_id}}/image", tags=["Templates"])
-async def get_template_image_admin(template_id: str, pb_session: Optional[str] = Cookie(default=None)) -> FileResponse:
+async def get_template_image_admin(
+    template_id: str,
+    request: Request,
+    pb_session: Optional[str] = Cookie(default=None),
+) -> FileResponse:
     _require_auth(pb_session)
     _get_template_or_404(template_id)
-    return FileResponse(_template_path(template_id), media_type="image/png")
+    return await _template_image_response(template_id, request.headers.get("accept", ""))
 
 
 @app.get(f"{API_CUSTOMER_PREFIX}/templates", tags=["Selfie"], summary="客戶端：可用模板列表")
@@ -1742,11 +1797,7 @@ async def customer_template_image(template_id: str, request: Request) -> FileRes
     if not _load_selfie_config()["enabled"]:
         raise HTTPException(status_code=403, detail="自拍活動尚未開放")
     _get_template_or_404(template_id)
-    return FileResponse(
-        _template_path(template_id),
-        media_type="image/png",
-        headers={"Cache-Control": "private, max-age=3600"},
-    )
+    return await _template_image_response(template_id, request.headers.get("accept", ""))
 
 
 def _composite_job(template_id: str, groups: List[List[Dict[str, int]]], raw_photos: List[bytes]) -> str:

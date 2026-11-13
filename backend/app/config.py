@@ -22,6 +22,15 @@ for directory in [INCOMING_DIR, TEMPLATE_DIR]:
 
 # 檔案類型設定
 SUPPORTED_IMAGE_FORMATS = ('.jpg', '.jpeg', '.png')
+WEBP_FORMAT = "WEBP"
+WEBP_MEDIA_TYPE = "image/webp"
+WEBP_EXTENSION = ".webp"
+WEBP_METHOD = 6
+JPEG_FORMAT = "JPEG"
+JPEG_MEDIA_TYPE = "image/jpeg"
+JPEG_EXTENSION = ".jpg"
+PNG_MEDIA_TYPE = "image/png"
+THUMB_JPEG_QUALITY = 82
 
 # WebSocket 設定
 WS_PHOTO_ROUTE = "/ws/photos"

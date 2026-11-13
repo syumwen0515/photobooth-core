@@ -211,7 +211,7 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 |------|------|------|
 | GET | `/api/admin/incoming` | 照片列表（含取件碼）|
 | POST | `/api/admin/upload-incoming` | 單一請求上傳一張照片（JPG / PNG，最大 50 MB）；管理介面支援多選並逐檔送出 |
-| GET | `/api/admin/incoming/thumb/{filename}` | 取得縮圖（480px WebP，有快取）|
+| GET | `/api/admin/incoming/thumb/{filename}` | 取得縮圖（480px；依 `Accept` 回傳 WebP 或 JPEG，有快取）|
 | DELETE | `/api/admin/incoming/{filename}` | 刪除單張 |
 | DELETE | `/api/admin/incoming` | 清除全部 |
 | POST | `/api/admin/open-incoming-folder` | 以系統檔案總管開啟 incoming 資料夾（僅限本機，遠端回傳 403）|
@@ -237,7 +237,7 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 | 方法 | 端點 | 說明 |
 |------|------|------|
 | GET | `/api/gallery` | 照片列表（公開，按拍攝時間排序；含 `enabled` / `wm_version` 欄位）|
-| GET | `/api/gallery/thumb/{filename}` | 公開縮圖（480px WebP，含浮水印，MD5 hash 快取；接受 `?v=` query 用於瀏覽器快取失效）|
+| GET | `/api/gallery/thumb/{filename}` | 公開縮圖（480px；依 `Accept` 回傳含浮水印的 WebP 或 JPEG，MD5 hash 快取；接受 `?v=` query 用於瀏覽器快取失效）|
 
 ### Gallery 設定
 | 方法 | 端點 | 說明 |
@@ -324,7 +324,7 @@ LINE 交付沿用現有流程：客戶在 LINE 輸入取件碼取得 `/download/
 | 本機限定功能 | `open-incoming-folder` 端點驗證 TCP 連線來源 IP（非 `Host` header，防止 ngrok 環境下的 Host 偽造），非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
 | 公開照片存取 | **Gallery**：公開內容僅有 480px 浮水印縮圖；Canvas 與右鍵/拖曳攔截只能降低一般另存便利，不能阻止使用者擷取瀏覽器已取得的資料。原圖需有效取件碼或管理員 session。**取件頁面**：`<img>` 顯示縮圖；下載按鈕優先使用 Web Share API（iOS 15+ / Android 86+），不支援時以 blob URL 下載 |
-| 縮圖快取命名 | 公開縮圖以 `MD5(filename)` 命名（`pub_<hash>.webp`），避免中文/特殊字元檔名在 Windows 路徑比對不一致；Pillow 讀圖改用 BytesIO，避免 Unicode path 相容問題 |
+| 縮圖快取命名 | 公開縮圖以 `MD5(filename)` 命名（`pub_<hash>.webp` 或 `pub_<hash>.jpg`，依 `Accept` 格式協商），避免中文/特殊字元檔名在 Windows 路徑比對不一致；Pillow 讀圖改用 BytesIO，避免 Unicode path 相容問題 |
 | 取件碼生成 | 使用 Python `secrets.choice()`（CSPRNG）生成 6 碼取件碼，確保攻擊者無法從已知碼推算後續碼；`random.choices()`（梅森旋轉，非密碼學安全）已移除 |
 | 敏感 Token 環境變數注入 | `NGROK_AUTHTOKEN`、`LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN` 均支援環境變數覆蓋，優先序高於 JSON 落盤設定；建議展場生產部署時以環境變數注入，不將 Token 存入 `storage/` 明文檔 |
 

@@ -458,6 +458,7 @@ function loadBg(src) {
 const ts = Date.now();
 const cvs = document.createElement('canvas');
 const supportsWebP = cvs.toDataURL('image/webp').startsWith('data:image/webp');
+const galleryAccept = supportsWebP ? 'image/webp,image/jpeg,image/*' : 'image/jpeg,image/*';
 loadBg(supportsWebP ? '/static/bg/bg.webp?' + ts : '/static/bg/bg.jpg?' + ts);
 
 /* ── Font / index text ── */
@@ -548,7 +549,7 @@ function loadPhotoToCanvas(filename, canvas, item, idx, wmVersion) {
     if (wmVersion) url += '?v=' + wmVersion;
     function start() {
         galleryQueue.push(function (done) {
-            fetch(url)
+            fetch(url, { headers: { Accept: galleryAccept } })
                 .then(function (r) { return r.ok ? r.blob() : Promise.reject(); })
                 .then(function (blob) {
                     drawToCanvas(canvas, item, URL.createObjectURL(blob), idx);
