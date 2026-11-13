@@ -126,6 +126,8 @@
         <div class="actions">
             <button id="btn-shoot" class="btn btn-primary" data-i18n="app.shoot">拍攝</button>
             <button id="btn-submit" class="btn btn-primary" data-i18n="app.submit" hidden>完成並合成</button>
+            <button id="btn-upload" class="btn" data-i18n="app.upload">從相簿選取照片</button>
+            <input id="file-input" type="file" accept="image/*" multiple hidden>
             <button id="btn-retake" class="btn" data-i18n="app.retake" hidden>重拍</button>
             <button id="btn-back" class="btn" data-i18n="app.back">重新選擇版型</button>
         </div>
@@ -150,6 +152,7 @@
             'app.shoot': '拍攝',
             'app.submit': '完成並合成',
             'app.retake': '重拍',
+            'app.upload': '從相簿選取照片',
             'app.back': '重新選擇版型',
             'app.progress': '第 {n} / {total} 張',
             'app.done': '已拍完 {total} 張，確認後即可合成',
@@ -167,6 +170,7 @@
             'app.shoot': 'Shoot',
             'app.submit': 'Finish & Compose',
             'app.retake': 'Retake',
+            'app.upload': 'Choose from library',
             'app.back': 'Choose another layout',
             'app.progress': 'Photo {n} / {total}',
             'app.done': 'All {total} photos taken. Confirm to compose.',
@@ -273,7 +277,7 @@
             });
         } catch (e) {
             setError(t('app.camDenied'));
-            return;
+            _stream = null;
         }
         var video = $('cam-video');
         video.srcObject = _stream;
@@ -304,7 +308,8 @@
         $('progress').textContent = done
             ? t('app.done', { total: total })
             : t('app.progress', { n: _shots.length + 1, total: total });
-        $('btn-shoot').hidden = done;
+        $('btn-shoot').hidden = done || !_stream;
+        $('btn-upload').hidden = done;
         $('btn-submit').hidden = !done;
         $('btn-retake').hidden = _shots.length === 0;
         var slot = _template.slots[Math.min(_shots.length, total - 1)];
@@ -335,6 +340,58 @@
         });
     }
 
+    function cropImageFile(file) {
+        var slot = _template.slots[_shots.length];
+        return new Promise(function (resolve, reject) {
+            var url = URL.createObjectURL(file);
+            var img = new Image();
+            img.onload = function () {
+                var vw = img.naturalWidth, vh = img.naturalHeight;
+                var targetRatio = slot.width / slot.height;
+                var sw = vw, sh = vh;
+                if (vw / vh > targetRatio) { sw = vh * targetRatio; } else { sh = vw / targetRatio; }
+                var sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+                var scale = Math.min(1, MAX_SIDE / Math.max(sw, sh));
+                var canvas = document.createElement('canvas');
+                canvas.width = Math.round(sw * scale);
+                canvas.height = Math.round(sh * scale);
+                canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+                URL.revokeObjectURL(url);
+                canvas.toBlob(function (b) { b ? resolve(b) : reject(new Error('toBlob')); }, 'image/jpeg', 0.92);
+            };
+            img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode')); };
+            img.src = url;
+        });
+    }
+
+    function addShot(blob) {
+        var url = URL.createObjectURL(blob);
+        _shots.push({ blob: blob, url: url });
+        var thumb = document.createElement('img');
+        thumb.src = url;
+        thumb.alt = '';
+        $('shots').appendChild(thumb);
+        updateProgress();
+    }
+
+    $('btn-upload').addEventListener('click', function () { $('file-input').click(); });
+    $('file-input').addEventListener('change', async function (e) {
+        var files = Array.prototype.slice.call(e.target.files || []);
+        e.target.value = '';
+        if (_busy || !files.length) return;
+        _busy = true;
+        setError('');
+        try {
+            for (var i = 0; i < files.length && _shots.length < _template.slots.length; i++) {
+                addShot(await cropImageFile(files[i]));
+            }
+        } catch (err) {
+            setError(t('app.fail'));
+        } finally {
+            _busy = false;
+        }
+    });
+
     function runCountdown() {
         var el = $('countdown');
         return new Promise(function (resolve) {
@@ -357,13 +414,7 @@
         try {
             await runCountdown();
             var blob = await captureFrame();
-            var url = URL.createObjectURL(blob);
-            _shots.push({ blob: blob, url: url });
-            var thumb = document.createElement('img');
-            thumb.src = url;
-            thumb.alt = '';
-            $('shots').appendChild(thumb);
-            updateProgress();
+            addShot(blob);
         } catch (e) {
             setError(t('app.fail'));
         } finally {

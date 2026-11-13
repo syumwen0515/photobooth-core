@@ -997,6 +997,9 @@
             'tpl.upload':          '上傳模板',
             'tpl.empty':           '尚無模板',
             'tpl.saveSlots':       '儲存槽位',
+            'tpl.deleteSlot':      '刪除此槽位',
+            'tpl.confirmDeleteSlot': '確定刪除此槽位？刪除後會立即儲存。',
+            'tpl.lastSlot':        '至少需保留一個槽位',
             'tpl.delete':          '刪除',
             'tpl.deleteConfirm':   '確定刪除此模板？',
             'tpl.slotCount':       '個槽位',
@@ -1133,6 +1136,9 @@
             'tpl.upload':          'Upload Template',
             'tpl.empty':           'No templates yet',
             'tpl.saveSlots':       'Save slots',
+            'tpl.deleteSlot':      'Delete slot',
+            'tpl.confirmDeleteSlot': 'Delete this slot? Changes are saved immediately.',
+            'tpl.lastSlot':        'At least one slot must remain',
             'tpl.delete':          'Delete',
             'tpl.deleteConfirm':   'Delete this template?',
             'tpl.slotCount':       'slot(s)',
@@ -1435,7 +1441,15 @@
             box.style.height = (vals.height / tpl.height * 100) + '%';
         };
 
-        tpl.slots.forEach(slot => {
+        const collectSlot = ({ slot_id, fields: f }) => ({
+            slot_id,
+            x: Number(f.x.value) || 0,
+            y: Number(f.y.value) || 0,
+            width: Number(f.width.value) || 0,
+            height: Number(f.height.value) || 0,
+        });
+
+        tpl.slots.slice().forEach(slot => {
             const box = document.createElement('div');
             box.className = 'tpl-slot-box';
             box.textContent = slot.slot_id;
@@ -1465,7 +1479,29 @@
                 lab.appendChild(inp);
                 row.appendChild(lab);
             });
-            inputs.push({ slot_id: slot.slot_id, fields: rowInputs });
+            const entry = { slot_id: slot.slot_id, fields: rowInputs };
+            inputs.push(entry);
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'btn-danger';
+            delBtn.textContent = t('tpl.deleteSlot');
+            delBtn.addEventListener('click', async () => {
+                if (inputs.length <= 1) { alert(t('tpl.lastSlot')); return; }
+                if (!confirm(t('tpl.confirmDeleteSlot'))) return;
+                const idx = inputs.indexOf(entry);
+                const remaining = inputs.filter(i => i !== entry).map(collectSlot);
+                try {
+                    await axios.post(`${API_URL}/api/admin/templates/${tpl.id}/slots`, { slots: remaining });
+                    inputs.splice(idx, 1);
+                    box.remove();
+                    row.remove();
+                    tpl.slots = tpl.slots.filter(s => s.slot_id !== entry.slot_id);
+                    title.textContent = `${tpl.name}（${tpl.width}×${tpl.height}，${tpl.slots.length} ${t('tpl.slotCount')}）`;
+                } catch (err) {
+                    alert(t('err.saveFail') + (err.response?.data?.detail || ''));
+                }
+            });
+            row.appendChild(delBtn);
             rows.appendChild(row);
         });
 
@@ -1473,13 +1509,7 @@
         saveBtn.className = 'btn-primary';
         saveBtn.textContent = t('tpl.saveSlots');
         saveBtn.addEventListener('click', async () => {
-            const slots = inputs.map(({ slot_id, fields: f }) => ({
-                slot_id,
-                x: Number(f.x.value) || 0,
-                y: Number(f.y.value) || 0,
-                width: Number(f.width.value) || 0,
-                height: Number(f.height.value) || 0,
-            }));
+            const slots = inputs.map(collectSlot);
             try {
                 await axios.post(`${API_URL}/api/admin/templates/${tpl.id}/slots`, { slots });
                 saveBtn.textContent = t('msg.saved');
