@@ -142,6 +142,9 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 | 2026-06-02 | 改密碼改用 Modal + `type="password"` | 原 `prompt()` 以明碼顯示密碼輸入；改為頁內 Modal，提供密碼遮罩、確認欄位與前端驗證 |
 | 2026-11-11 | `admin` 為最高管理者（`config.py::SUPER_ADMIN_USERNAME`）；改密碼僅限本人，刪帳號僅 admin；改自己密碼後前端跳轉 `/login`，後台 axios 401 攔截器導向登入 | 原本任一管理者可改/刪任何帳號；改密碼會銷毀該帳號 session，前端未跳轉導致後續請求 401 才發現；`/api/admin/accounts` 回傳 `current` / `super_admin` 供前端隱藏無權限按鈕，後端仍為權限判斷依據 |
 | 2026-11-13 | 合成功能以「選用」形式回歸（部分推翻 2026-06-02 移除 compositor）：模板上傳 + Alpha 槽位偵測 + 客戶自拍頁 `/app` + `/api/v1/customer/*` | 客戶需要自拍並套用版型。破壞性最小設計：**未上傳模板且未開啟 `selfie_config.json` 的 `enabled` 時行為與原本完全相同**；合成結果寫入 `incoming/` 並走既有取件碼、Gallery、縮圖、`protect_static_incoming`，**不新增 `/static/exports`、`/static/qr` 公開路徑**（會繞過取件碼）；偵測用 Pillow + numpy 逐列連續區段 union-find（不引入 OpenCV）；後台沿用 `/api/admin`，僅客戶公開端點使用 `/api/v1/customer`；LINE 沿用「輸入取件碼」流程，**不接受客戶端傳入 LINE userId、不新增 push**；公開端點須通過活動開關、`_check_selfie_rate_limit`（IP 維度）、單張 12 MB / 50M 像素上限、`_composite_semaphore` 併發上限；模板 id 由伺服器產生（`tpl_` + 12 hex），路徑經 regex + `relative_to` 驗證；相機控制與列印不在此階段 |
+| 2026-11-13 | 合成採「等比例放大填滿槽位、置中裁切」（`ImageOps.fit`），不留白、不變形；`/app` 相簿上傳不在瀏覽器端裁切 | 客戶要求照片直接符合框架；曾試過 `ImageOps.contain`（完整放入、留白）但被否決；相簿照片只在瀏覽器端縮到最長邊 1600px，裁切統一由伺服器處理，避免相機與相簿兩條路徑結果不一致、也避免二次裁切 |
+| 2026-11-13 | 模板支援左右對稱 `mirror_rows`：同一列（垂直重疊超過一半）的槽位共用一張照片；上傳時若每列恰好 2 槽位則自動啟用，後台可勾選/取消 | 客戶版型為左右對稱（4 列 × 2 = 8 槽放 4 張）；`template_service.photo_groups()` 是「需要幾張照片」的唯一依據，`/api/v1/customer/templates` 只回傳每組的代表槽位，`customer_composite` 驗證照片數須等於組數；舊模板無此欄位視為 false，行為不變 |
+| 2026-11-13 | 後台可刪除誤判槽位（確認後立即儲存，至少保留 1 個）；`/app` 新增「從相簿選取照片」（可多選，依序補滿槽位）；相機被拒絕時仍可用相簿 | 偵測可能誤判；使用者不一定能用相機；HTTPS 檢查失敗（非安全環境）時仍整頁顯示提示，不提供相簿上傳 |
 | 2026-11-13 | `/app` 路徑的 `Permissions-Policy` 為 `camera=(self)`，其餘路徑維持 `camera=()` | `getUserMedia` 需要相機權限，原全站 `camera=()` 會直接封鎖；僅對 `SELFIE_PAGE_ROUTE` 放寬到同源，其餘頁面不變；CSP 未改動（`/app` 與其他公開頁一樣 `style-src` nonce-only） |
 | 2026-06-03 | 深/淺色模式用 CSS variables + `data-theme` | 無建置工具環境下最輕量；不依賴 Tailwind dark class purge；全域狀態一個 attribute 搞定 |
 | 2026-06-03 | i18n 用純 JS TRANSLATIONS 物件 | 不引入外部函式庫，維持零建置工具原則；管理頁面文字量不大，物件方案已足夠 |
@@ -239,6 +242,8 @@ img = Image.open(io.BytesIO(src_path.read_bytes()))
 - **不得**在 `customer_composite` 移除活動開關檢查、`_check_selfie_rate_limit`、單張大小上限或 `_composite_semaphore` — 該端點無認證且為 CPU 密集操作，這些是唯一的資源濫用防線
 - **不得**為合成結果新增公開靜態目錄（`/static/exports`、`/static/qr` 等）— 結果必須寫入 `incoming/` 並以取件碼交付，否則繞過取件碼機制
 - **不得**讓客戶端傳入 LINE userId 觸發 push — 任何人可填他人 ID 濫用 bot；LINE 交付維持「客戶輸入取件碼」流程
+- **不得**繞過 `template_service.photo_groups()` 自行以槽位數計算所需照片數 — 左右對稱模板（`mirror_rows`）的照片數是「列數」而非槽位數；前後端與 `customer_composite` 必須一致
+- **不得**在 `/app` 相簿上傳於瀏覽器端依槽位比例裁切 — 裁切（`ImageOps.fit`）只在 `composite_service.compose` 進行
 - **不得**將 `Permissions-Policy: camera=(self)` 擴展到 `/app` 以外的路徑
 - **不得**在 HTML 模板中使用 `style=""` inline attribute — `style-src 'nonce-*'` 封鎖所有 `style=""` HTML attribute；所有樣式必須以具名 CSS class 形式置入 `<style nonce="__CSP_NONCE__">` 區塊；CSSOM API（`element.style.property = value`）不受此限，可安全使用
 - **不得**在任何 HTML 模板新增無 `nonce="__CSP_NONCE__"` 屬性的 `<style>` 元素 — 缺少 nonce 的 `<style>` 會被 `style-src 'nonce-*'` 封鎖，造成樣式失效；動態注入 CSS 改用預埋空 `<style id="..." nonce="__CSP_NONCE__">` + CSSOM `.textContent` 方式
