@@ -379,6 +379,7 @@
         .reset-acc-body-border { border-top: 1px solid rgba(248,113,113,0.15); }
         .reset-warning-box     { background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.15); }
         #resetResult           { background: var(--wa-cream); border: 1px solid var(--border); color: var(--text-main); }
+        .perf-stat { border: 1px solid var(--border); padding: 0.5rem 0.75rem; }
         .acc-trigger[data-acc="reset"]:hover { background: rgba(248,113,113,0.04); }
 
         /* Incoming card (JS-rendered) */
@@ -863,6 +864,28 @@
     <!-- ════════════════════════════════════════════════════ -->
     <div id="tab-system" class="tab-panel anim d4 space-y-3">
 
+        <!-- ▸ 系統效能（僅 admin 可見） -->
+        <div class="wa-card hidden" id="perfCard">
+            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
+                    data-acc="perf">
+                <div class="flex items-center gap-3">
+                    <span class="text-base font-light text-wa-gray" data-i18n="perf.title">系統效能</span>
+                    <span class="text-xs text-wa-blue font-light" data-i18n="perf.desc">即時監控（僅 admin 可見）</span>
+                </div>
+                <svg class="acc-arrow w-4 h-4 text-wa-blue" data-acc="perf"
+                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                </svg>
+            </button>
+            <div class="acc-body" id="acc-perf">
+                <div class="px-5 pb-5 space-y-4 border-t border-wa-light">
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4" id="perfStats"></div>
+                    <div class="space-y-3" id="perfCharts"></div>
+                    <p class="text-xs text-wa-blue font-light" id="perfHint"></p>
+                </div>
+            </div>
+        </div>
+
         <!-- ▸ 帳號管理 -->
         <div class="wa-card">
             <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
@@ -1073,6 +1096,18 @@
             'photos.loadFail':     '載入失敗',
             'photos.code':         '取件碼',
             'photos.delete':       '刪除',
+            'perf.title':          '系統效能',
+            'perf.desc':           '即時監控（僅 admin 可見）',
+            'perf.cpu':            'CPU（單核 %）',
+            'perf.mem':            '記憶體（MB）',
+            'perf.lag':            '事件迴圈延遲（ms）',
+            'perf.ws':             'WebSocket 連線',
+            'perf.thumbs':         '縮圖快取',
+            'perf.incoming':       '照片數量',
+            'perf.inflight':       '縮圖生成中',
+            'perf.threads':        '執行緒',
+            'perf.hint':           '每 {s} 秒更新；延遲持續偏高（>200ms）代表伺服器忙碌，網頁會變卡。',
+            'perf.na':             '無資料',
             'accounts.title':      '帳號管理',
             'accounts.desc':       '管理員帳號設定',
             'accounts.addTitle':   '新增管理員帳號',
@@ -1224,6 +1259,18 @@
             'photos.loadFail':     'Load failed',
             'photos.code':         'Code',
             'photos.delete':       'Delete',
+            'perf.title':          'System Performance',
+            'perf.desc':           'Live monitor (admin only)',
+            'perf.cpu':            'CPU (% of one core)',
+            'perf.mem':            'Memory (MB)',
+            'perf.lag':            'Event-loop lag (ms)',
+            'perf.ws':             'WebSocket clients',
+            'perf.thumbs':         'Thumbnail cache',
+            'perf.incoming':       'Photos',
+            'perf.inflight':       'Thumbnails generating',
+            'perf.threads':        'Threads',
+            'perf.hint':           'Updates every {s}s; sustained lag above 200 ms means the server is busy and pages will feel slow.',
+            'perf.na':             'N/A',
             'accounts.title':      'Accounts',
             'accounts.desc':       'Admin account settings',
             'accounts.addTitle':   'Add admin account',
@@ -1333,6 +1380,7 @@
     function toggleLang() {
         applyLang(_lang === 'zh-TW' ? 'en' : 'zh-TW');
         loadTemplates();
+        renderPerf();
     }
 
     // ═══════════════════════════════════════════════
@@ -1369,6 +1417,7 @@
         tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
         tabPanels.forEach(p => p.classList.toggle('active', p.id === `tab-${tabId}`));
         history.replaceState(null, '', `#${tabId}`);
+        if (typeof updatePerfPolling === 'function') updatePerfPolling();
     }
 
     tabBtns.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
@@ -1389,8 +1438,107 @@
             const isOpen = body.classList.contains('open');
             body.classList.toggle('open', !isOpen);
             arrow.classList.toggle('open', !isOpen);
+            if (id === 'perf') updatePerfPolling();
         });
     });
+
+    // ═══════════════════════════════════════════════
+    // 系統效能（僅 admin）
+    // ═══════════════════════════════════════════════
+    let _perfTimer = null;
+    let _perfData = null;
+    const PERF_CHARTS = [
+        { key: 'cpu',         label: 'perf.cpu', color: '#b8c5d6' },
+        { key: 'rss_mb',      label: 'perf.mem', color: '#8fb8a0' },
+        { key: 'loop_lag_ms', label: 'perf.lag', color: '#e0a77a' },
+    ];
+
+    function _sparkline(values, color) {
+        const W = 300, H = 48;
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+        svg.setAttribute('preserveAspectRatio', 'none');
+        svg.setAttribute('class', 'w-full');
+        svg.setAttribute('height', H);
+        const nums = values.filter(v => v !== null && v !== undefined);
+        if (nums.length < 2) return svg;
+        const max = Math.max(...nums, 1);
+        const pts = values.map((v, i) => `${(i / (values.length - 1)) * W},${H - 2 - ((v || 0) / max) * (H - 4)}`).join(' ');
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        line.setAttribute('points', pts);
+        line.setAttribute('fill', 'none');
+        line.setAttribute('stroke', color);
+        line.setAttribute('stroke-width', '1.5');
+        line.setAttribute('vector-effect', 'non-scaling-stroke');
+        svg.appendChild(line);
+        return svg;
+    }
+
+    function renderPerf() {
+        const d = _perfData;
+        if (!d) return;
+        const last = d.history[d.history.length - 1] || {};
+        const fmt = v => (v === null || v === undefined) ? t('perf.na') : v;
+        const stats = [
+            ['perf.ws', d.ws_connections],
+            ['perf.thumbs', `${d.thumb_files} / ${d.thumb_mb} MB`],
+            ['perf.incoming', d.incoming_files],
+            ['perf.inflight', d.thumb_inflight],
+            ['perf.threads', fmt(last.threads)],
+        ];
+        const statsEl = document.getElementById('perfStats');
+        statsEl.replaceChildren(...stats.map(([k, v]) => {
+            const box = document.createElement('div');
+            box.className = 'perf-stat';
+            const val = document.createElement('div');
+            val.className = 'text-base font-light text-wa-gray';
+            val.textContent = v;
+            const lab = document.createElement('div');
+            lab.className = 'text-xs text-wa-blue font-light';
+            lab.textContent = t(k);
+            box.append(val, lab);
+            return box;
+        }));
+        const chartsEl = document.getElementById('perfCharts');
+        chartsEl.replaceChildren(...PERF_CHARTS.map(c => {
+            const vals = d.history.map(h => h[c.key]);
+            const cur = vals.length ? vals[vals.length - 1] : null;
+            const wrap = document.createElement('div');
+            const head = document.createElement('div');
+            head.className = 'flex justify-between text-xs font-light text-wa-blue';
+            const l = document.createElement('span');
+            l.textContent = t(c.label);
+            const r = document.createElement('span');
+            r.textContent = fmt(cur);
+            head.append(l, r);
+            wrap.append(head, _sparkline(vals, c.color));
+            return wrap;
+        }));
+        document.getElementById('perfHint').textContent = t('perf.hint').replace('{s}', d.sample_interval);
+    }
+
+    async function loadPerf() {
+        try {
+            const res = await axios.get(`${API_URL}/api/admin/diagnostics`);
+            _perfData = res.data;
+            renderPerf();
+        } catch (e) { /* 非 admin 或暫時失敗：略過 */ }
+    }
+
+    function updatePerfPolling() {
+        const visible = !document.getElementById('perfCard').classList.contains('hidden')
+            && document.getElementById('tab-system').classList.contains('active')
+            && document.getElementById('acc-perf').classList.contains('open')
+            && !document.hidden;
+        if (visible && !_perfTimer) {
+            loadPerf();
+            _perfTimer = setInterval(loadPerf, 5000);
+        } else if (!visible && _perfTimer) {
+            clearInterval(_perfTimer);
+            _perfTimer = null;
+        }
+    }
+    document.addEventListener('visibilitychange', updatePerfPolling);
 
     // ═══════════════════════════════════════════════
     // Auth / Logout
@@ -2259,6 +2407,7 @@
         try {
             const res = await axios.get(`${API_URL}/api/admin/accounts`);
             _currentUser = res.data.current;
+            document.getElementById('perfCard').classList.toggle('hidden', res.data.current !== res.data.super_admin);
             renderAccounts(res.data.accounts, res.data.current, res.data.super_admin);
         } catch (_) {}
     }

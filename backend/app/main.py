@@ -10,8 +10,9 @@ import sys
 import secrets
 import logging
 import math
+import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from urllib.parse import quote
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -50,6 +51,8 @@ from app.config import (
     SECURE_COOKIES, ENABLE_API_DOCS,
     GALLERY_CONFIG_FILE, GALLERY_CONFIG_DEFAULTS, WM_FONT_CANDIDATES, WM_FONT_MARKER_NAME,
     LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW, TRUSTED_PROXY_IPS,
+    THUMB_MAX_CONCURRENCY, THUMB_SIZE, WS_SEND_TIMEOUT, GALLERY_LIST_TTL, STATIC_CACHE_CONTROL,
+    PERF_SAMPLE_INTERVAL, PERF_HISTORY_SIZE,
     TEMPLATES_DIR, TEMPLATES_META_FILE, SELFIE_CONFIG_FILE, SELFIE_CONFIG_DEFAULTS,
     API_CUSTOMER_PREFIX, SELFIE_PAGE_ROUTE, TEMPLATE_ID_PREFIX,
     TEMPLATE_MAX_BYTES, TEMPLATE_MAX_SLOTS,
@@ -142,7 +145,9 @@ def _load_photo_codes() -> None:
 
 def _save_photo_codes() -> None:
     try:
-        PHOTO_CODES_FILE.write_text(json.dumps(_photo_codes, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp = PHOTO_CODES_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(_photo_codes, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, PHOTO_CODES_FILE)
     except Exception as e:
         logger.error(f"❌ 取件碼儲存失敗: {e}")
 
@@ -464,14 +469,18 @@ class ConnectionManager:
         logger.info(f"🔌 WebSocket 斷線 (剩餘: {len(self.active_connections)})")
 
     async def broadcast(self, message: Dict[str, Any]) -> None:
-        disconnected: set[WebSocket] = set()
-        for connection in self.active_connections:
+        connections = list(self.active_connections)
+
+        async def _send(conn: WebSocket) -> Optional[WebSocket]:
             try:
-                await connection.send_json(message)
+                await asyncio.wait_for(conn.send_json(message), timeout=WS_SEND_TIMEOUT)
+                return None
             except Exception as e:
                 logger.error(f"⚠️ 廣播失敗: {e}")
-                disconnected.add(connection)
-        self.active_connections -= disconnected
+                return conn
+
+        results = await asyncio.gather(*(_send(c) for c in connections))
+        self.active_connections.difference_update(c for c in results if c is not None)
 
 
 manager = ConnectionManager()
@@ -505,6 +514,41 @@ async def _session_cleanup_task() -> None:
             del _selfie_request_log[ip]
 
 
+_perf_history: "deque[Dict[str, Any]]" = deque(maxlen=PERF_HISTORY_SIZE)
+
+
+def _process_rss_mb() -> Optional[float]:
+    try:
+        import psutil
+        return round(psutil.Process().memory_info().rss / 1048576, 1)
+    except ImportError:
+        pass
+    try:
+        with open("/proc/self/statm") as f:
+            return round(int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE") / 1048576, 1)
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+async def _perf_sampler_task() -> None:
+    """定期取樣 CPU / 記憶體 / 事件迴圈延遲，供後台效能面板顯示。"""
+    last_cpu, last_wall = time.process_time(), time.monotonic()
+    while True:
+        await asyncio.sleep(PERF_SAMPLE_INTERVAL)
+        now_cpu, now_wall = time.process_time(), time.monotonic()
+        elapsed = max(now_wall - last_wall, 1e-6)
+        _perf_history.append({
+            "ts": time.time(),
+            "cpu": round((now_cpu - last_cpu) / elapsed * 100, 1),
+            "rss_mb": _process_rss_mb(),
+            "loop_lag_ms": round(max(elapsed - PERF_SAMPLE_INTERVAL, 0) * 1000, 1),
+            "ws": len(manager.active_connections),
+            "threads": threading.active_count(),
+            "thumb_inflight": len(_thumb_inflight),
+        })
+        last_cpu, last_wall = now_cpu, now_wall
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     auth.init(ACCOUNTS_FILE)
@@ -517,9 +561,11 @@ async def lifespan(app: FastAPI):
     loop = asyncio.get_running_loop()
     app.state.observer = start_watcher(INCOMING_DIR, manager, loop, code_assigner=_assign_code)
     app.state.cleanup_task = loop.create_task(_session_cleanup_task())
+    app.state.perf_task = loop.create_task(_perf_sampler_task())
     logger.info("✓ 拍貼機服務啟動完成")
     yield
     app.state.cleanup_task.cancel()
+    app.state.perf_task.cancel()
     if hasattr(app.state, "observer") and app.state.observer:
         app.state.observer.stop()
         app.state.observer.join()
@@ -601,8 +647,16 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 app.mount(STATIC_INCOMING_ROUTE, StaticFiles(directory=str(INCOMING_DIR)), name="incoming_photos")
-app.mount(STATIC_BG_ROUTE, StaticFiles(directory=str(BG_DIR)), name="bg")
-app.mount(STATIC_FONTS_ROUTE, StaticFiles(directory=str(FONTS_DIR)), name="fonts")
+class _CachedStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        if resp.status_code == 200:
+            resp.headers["Cache-Control"] = STATIC_CACHE_CONTROL
+        return resp
+
+
+app.mount(STATIC_BG_ROUTE, _CachedStaticFiles(directory=str(BG_DIR)), name="bg")
+app.mount(STATIC_FONTS_ROUTE, _CachedStaticFiles(directory=str(FONTS_DIR)), name="fonts")
 
 
 # ==================== Pydantic 模型 ====================
@@ -768,7 +822,9 @@ async def login(body: LoginRequest, http_request: Request, response: Response) -
         raise HTTPException(status_code=429, detail="登入嘗試次數過多，請稍後再試")
     if auth.is_account_locked(body.username):
         raise HTTPException(status_code=429, detail="登入嘗試次數過多，請稍後再試")
-    if not auth.verify_credentials(body.username, body.password):
+    loop = asyncio.get_running_loop()
+    # PBKDF2 為 CPU 密集，不可在事件迴圈內直接執行
+    if not await loop.run_in_executor(None, auth.verify_credentials, body.username, body.password):
         raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
     token = auth.create_session(body.username)
     response.set_cookie(
@@ -919,7 +975,46 @@ async def save_index_text(request: IndexTextRequest, pb_session: Optional[str] =
     return {"message": "首頁文字設定已儲存"}
 
 
+@app.get(f"{API_ADMIN_PREFIX}/diagnostics", tags=["System"], summary="效能診斷（僅最高管理者）")
+async def get_diagnostics(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
+    if _require_auth(pb_session) != SUPER_ADMIN_USERNAME:
+        raise HTTPException(status_code=403, detail="僅 admin 可查看系統效能")
+
+    def _collect() -> Dict[str, Any]:
+        thumbs = [f for f in THUMB_DIR.iterdir() if f.is_file()]
+        return {
+            "thumb_files": len(thumbs),
+            "thumb_mb": round(sum(f.stat().st_size for f in thumbs) / 1048576, 1),
+            "incoming_files": len(_scan_incoming_names()),
+        }
+
+    info = await asyncio.get_running_loop().run_in_executor(None, _collect)
+    info.update({
+        "ws_connections": len(manager.active_connections),
+        "thumb_inflight": len(_thumb_inflight),
+        "sessions": len(auth._sessions),
+        "sample_interval": PERF_SAMPLE_INTERVAL,
+        "history": list(_perf_history),
+    })
+    return info
+
+
 # ==================== 公開照片集 API ====================
+
+_gallery_list_cache: List[Any] = []  # [monotonic 時間, 檔名列表]；空 list 表示無快取
+
+
+def _scan_incoming_names() -> List[str]:
+    paths = []
+    for p in INCOMING_DIR.iterdir():
+        if p.suffix.lower() in SUPPORTED_IMAGE_FORMATS:
+            try:
+                paths.append((p.name, p.stat().st_mtime))
+            except (FileNotFoundError, OSError):
+                pass
+    paths.sort(key=lambda x: x[1], reverse=True)
+    return [n for n, _ in paths]
+
 
 @app.get("/api/gallery", tags=["Public"], summary="公開照片集列表")
 async def get_gallery_list() -> Dict[str, Any]:
@@ -930,15 +1025,14 @@ async def get_gallery_list() -> Dict[str, Any]:
     if not enabled:
         return {"enabled": False, "photos": [], "count": 0, "wm_version": wm_version}
     try:
-        paths = []
-        for p in INCOMING_DIR.iterdir():
-            if p.suffix.lower() in SUPPORTED_IMAGE_FORMATS:
-                try:
-                    paths.append((p, p.stat().st_mtime))
-                except (FileNotFoundError, OSError):
-                    pass
-        paths.sort(key=lambda x: x[1], reverse=True)
-        return {"enabled": True, "photos": [p.name for p, _ in paths], "count": len(paths), "wm_version": wm_version}
+        now = time.monotonic()
+        cached = _gallery_list_cache
+        if cached and now - cached[0] < GALLERY_LIST_TTL:
+            names = cached[1]
+        else:
+            names = await asyncio.get_running_loop().run_in_executor(None, _scan_incoming_names)
+            _gallery_list_cache[:] = [now, names]
+        return {"enabled": True, "photos": list(names), "count": len(names), "wm_version": wm_version}
     except Exception:
         return {"enabled": True, "photos": [], "count": 0, "wm_version": wm_version}
 
@@ -962,8 +1056,7 @@ async def get_gallery_thumb_public(filename: str) -> FileResponse:
         try:
             gallery_cfg = _load_gallery_config()
             wm_text = gallery_cfg.get("watermark_text") or GALLERY_CONFIG_DEFAULTS["watermark_text"]
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, _generate_public_thumbnail, src_path, thumb_path, wm_text)
+            await _ensure_thumb(thumb_path, _generate_public_thumbnail, src_path, thumb_path, wm_text)
         except Exception as e:
             logger.error(f"公開縮圖生成失敗 {filename}: {e}")
             raise HTTPException(status_code=500, detail="縮圖生成失敗")
@@ -1081,11 +1174,35 @@ async def list_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Dic
         raise HTTPException(status_code=500, detail=f"無法取得照片列表: {e}")
 
 
+_thumb_semaphore = asyncio.Semaphore(THUMB_MAX_CONCURRENCY)
+_thumb_inflight: Dict[Path, "asyncio.Future[None]"] = {}
+
+
+async def _ensure_thumb(thumb_path: Path, fn, *args) -> None:
+    """限制同時生成數，並讓同一縮圖的並發請求共用同一個工作。"""
+    if thumb_path.exists():
+        return
+    fut = _thumb_inflight.get(thumb_path)
+    if fut is None:
+        async def _job() -> None:
+            async with _thumb_semaphore:
+                if not thumb_path.exists():
+                    await asyncio.get_running_loop().run_in_executor(None, fn, *args)
+        fut = asyncio.ensure_future(_job())
+        _thumb_inflight[thumb_path] = fut
+        fut.add_done_callback(lambda _f: _thumb_inflight.pop(thumb_path, None))
+    await asyncio.shield(fut)
+
+
+def _open_for_thumb(src_path: Path, mode: str) -> Image.Image:
+    img = Image.open(io.BytesIO(src_path.read_bytes()))
+    img.draft("RGB", (THUMB_SIZE * 2, THUMB_SIZE * 2))  # JPEG 縮減解碼，非 JPEG 無作用
+    return ImageOps.exif_transpose(img).convert(mode)
+
+
 def _generate_thumbnail(src_path: Path, thumb_path: Path, fmt: str = "WEBP") -> None:
-    img = ImageOps.exif_transpose(
-        Image.open(io.BytesIO(src_path.read_bytes()))
-    ).convert("RGB")
-    img.thumbnail((480, 480), Image.LANCZOS)
+    img = _open_for_thumb(src_path, "RGB")
+    img.thumbnail((THUMB_SIZE, THUMB_SIZE), Image.LANCZOS)
     buf = io.BytesIO()
     if fmt == "JPEG":
         img.save(buf, "JPEG", quality=82, optimize=True)
@@ -1130,10 +1247,8 @@ def _pub_thumb_path(filename: str) -> Path:
 
 def _generate_public_thumbnail(src_path: Path, thumb_path: Path, watermark_text: str = "") -> None:
     """縮圖 + 浮水印，供公開照片集使用（與管理端縮圖分開快取）。"""
-    img = ImageOps.exif_transpose(
-        Image.open(io.BytesIO(src_path.read_bytes()))
-    ).convert("RGBA")
-    img.thumbnail((480, 480), Image.LANCZOS)
+    img = _open_for_thumb(src_path, "RGBA")
+    img.thumbnail((THUMB_SIZE, THUMB_SIZE), Image.LANCZOS)
     w, h = img.size
 
     font_size = max(13, w // 16)
@@ -1188,8 +1303,7 @@ async def get_incoming_thumb(filename: str, pb_session: Optional[str] = Cookie(d
     thumb_path = THUMB_DIR / f"{filename}.thumb.webp"
     if not thumb_path.exists():
         try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, _generate_thumbnail, src_path, thumb_path)
+            await _ensure_thumb(thumb_path, _generate_thumbnail, src_path, thumb_path)
         except Exception as e:
             logger.error(f"縮圖生成失敗 {filename}: {e}")
             raise HTTPException(status_code=500, detail="縮圖生成失敗")
@@ -1223,6 +1337,7 @@ async def delete_incoming(filename: str, pb_session: Optional[str] = Cookie(defa
     pub_thumb = _pub_thumb_path(filename)
     if pub_thumb.exists():
         pub_thumb.unlink()
+    _gallery_list_cache.clear()
     if filename in _photo_codes:
         code = _photo_codes.pop(filename)
         _code_to_file.pop(code, None)
@@ -1253,6 +1368,7 @@ async def clear_incoming(pb_session: Optional[str] = Cookie(default=None)) -> Di
                     _code_to_file.pop(code, None)
             except Exception as e:
                 errors.append(f"{p.name}: {e}")
+    _gallery_list_cache.clear()
     if deleted:
         _save_photo_codes()
     return {"deleted": deleted, "errors": errors, "count": len(deleted)}
@@ -1484,8 +1600,7 @@ async def serve_photo_thumb(code: str, request: Request) -> FileResponse:
 
     if not thumb_path.exists():
         try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, _generate_thumbnail, src_path, thumb_path, fmt)
+            await _ensure_thumb(thumb_path, _generate_thumbnail, src_path, thumb_path, fmt)
         except Exception as e:
             logger.error(f"取件縮圖生成失敗 {filename}: {e}")
             raise HTTPException(status_code=500, detail="縮圖生成失敗")

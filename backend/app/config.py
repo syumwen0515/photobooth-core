@@ -176,5 +176,13 @@ COMPOSITE_JPEG_QUALITY = 92
 SELFIE_RATE_LIMIT = int(os.getenv("SELFIE_RATE_LIMIT", "6"))  # 每個 IP 每分鐘最多合成 N 次
 SELFIE_RATE_WINDOW = 60  # 秒
 
+THUMB_MAX_CONCURRENCY = 2       # 同時生成縮圖的工作數（避免 CPU / 記憶體暴衝）
+THUMB_SIZE = 480                # 縮圖最長邊（px）
+WS_SEND_TIMEOUT = 5.0           # WebSocket 單一連線送出逾時（秒），逾時視為死連線
+GALLERY_LIST_TTL = 5.0          # /api/gallery 檔案列表記憶體快取秒數
+PERF_SAMPLE_INTERVAL = 5.0      # 效能取樣間隔（秒）
+PERF_HISTORY_SIZE = 120         # 保留取樣數（約 10 分鐘）
+STATIC_CACHE_CONTROL = "public, max-age=3600"  # 背景圖 / 字型靜態檔快取
+
 for directory in [BG_DIR, THUMB_DIR, FONTS_DIR, TEMPLATES_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
