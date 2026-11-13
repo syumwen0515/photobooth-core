@@ -57,3 +57,20 @@ class CompositeTests(unittest.TestCase):
     def test_decode_rejects_garbage(self):
         with self.assertRaises(ValueError):
             composite_service.decode_photo(b"not an image")
+
+
+class MirroredRowsTests(unittest.TestCase):
+    HOLES = tuple((x, y, 80, 60) for y in (20, 120, 220, 320) for x in (10, 210))
+
+    def test_two_column_layout_needs_one_photo_per_row(self):
+        slots = template_service.detect_transparent_slots(_template_png((300, 420), self.HOLES))
+        self.assertEqual(len(slots), 8)
+        self.assertTrue(template_service.looks_mirrored(slots))
+        groups = template_service.photo_groups({"slots": slots, "mirror_rows": True})
+        self.assertEqual([len(g) for g in groups], [2, 2, 2, 2])
+        self.assertEqual([g[0]["x"] for g in groups], [10] * 4)
+        self.assertEqual(len(template_service.photo_groups({"slots": slots})), 8)
+
+    def test_single_column_is_not_mirrored(self):
+        slots = template_service.detect_transparent_slots(_template_png((300, 420), self.HOLES[::2]))
+        self.assertFalse(template_service.looks_mirrored(slots))

@@ -261,6 +261,8 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 | GET | `/api/v1/customer/templates/{id}/image` | 模板圖檔（活動關閉時 403）|
 | POST | `/api/v1/customer/composite` | `multipart/form-data`：`template_id` + `files`（照片數須等於槽位數，依槽位順序）；回傳 `code` 與 `download_url`。速率限制：`SELFIE_RATE_LIMIT`/分/IP |
 
+左右對稱版型：若每一列恰好有 2 個槽位，上傳時會自動啟用「左右對稱」（`mirror_rows`），同一列的左右槽位使用同一張照片，客戶只需拍列數張（例如 4 列 8 槽 → 4 張）；後台可隨時勾選或取消。
+
 LINE 交付沿用現有流程：客戶在 LINE 輸入取件碼取得 `/download/{code}` 連結。
 
 ### 照片取件

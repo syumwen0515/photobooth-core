@@ -14,6 +14,38 @@ from app.config import (
 )
 
 
+def group_rows(slots: List[Dict[str, int]]) -> List[List[Dict[str, int]]]:
+    """將垂直方向重疊超過一半的槽位視為同一列，列由上到下、列內由左到右排序。"""
+    rows: List[List[Dict[str, int]]] = []
+    spans: List[Tuple[int, int]] = []
+    for slot in sorted(slots, key=lambda s: (s["y"], s["x"])):
+        top, bottom = slot["y"], slot["y"] + slot["height"]
+        for i, (r_top, r_bottom) in enumerate(spans):
+            overlap = min(bottom, r_bottom) - max(top, r_top)
+            if overlap * 2 > min(bottom - top, r_bottom - r_top):
+                rows[i].append(slot)
+                spans[i] = (min(top, r_top), max(bottom, r_bottom))
+                break
+        else:
+            rows.append([slot])
+            spans.append((top, bottom))
+    return [sorted(r, key=lambda s: s["x"]) for r in rows]
+
+
+def looks_mirrored(slots: List[Dict[str, int]]) -> bool:
+    """每一列都恰好有 2 個槽位（左右對稱版型）。"""
+    rows = group_rows(slots)
+    return len(rows) >= 1 and all(len(r) == 2 for r in rows)
+
+
+def photo_groups(tpl: Dict) -> List[List[Dict[str, int]]]:
+    """每個元素代表一張需要的照片及其要填入的所有槽位。"""
+    slots = tpl["slots"]
+    if tpl.get("mirror_rows"):
+        return group_rows(slots)
+    return [[s] for s in slots]
+
+
 def open_template(image_bytes: bytes) -> Image.Image:
     """以 BytesIO 讀取模板並轉為 RGBA；超過像素上限或非有效圖片時拋出 ValueError。"""
     try:

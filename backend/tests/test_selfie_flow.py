@@ -126,3 +126,32 @@ class SelfieFlowTests(unittest.TestCase):
         self.assertNotIn("unsafe-inline", app_res.headers["Content-Security-Policy"])
         other = self.client.get("/login")
         self.assertIn("camera=()", other.headers["Permissions-Policy"])
+
+    def test_mirrored_template_needs_one_photo_per_row(self):
+        img = Image.new("RGBA", (300, 400), (10, 20, 30, 255))
+        draw = ImageDraw.Draw(img)
+        for y in (20, 120, 220):
+            for x in (10, 160):
+                draw.rectangle([x, y, x + 119, y + 79], fill=(0, 0, 0, 0))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        res = self.client.post(
+            f"{main.API_ADMIN_PREFIX}/templates",
+            files={"file": ("tpl.png", buf.getvalue(), "image/png")},
+        )
+        tpl = res.json()
+        self.assertEqual(len(tpl["slots"]), 6)
+        self.assertTrue(tpl["mirror_rows"])
+        self.client.post(f"{main.API_ADMIN_PREFIX}/selfie-settings", json={"enabled": True})
+        listed = self.client.get(f"{main.API_CUSTOMER_PREFIX}/templates").json()["templates"]
+        self.assertEqual(len(listed[0]["slots"]), 3)
+
+        def submit(n):
+            return self.client.post(
+                f"{main.API_CUSTOMER_PREFIX}/composite",
+                data={"template_id": tpl["id"]},
+                files=[("files", (f"{i}.jpg", _jpeg(), "image/jpeg")) for i in range(n)],
+            )
+
+        self.assertEqual(submit(6).status_code, 400)
+        self.assertEqual(submit(3).status_code, 200)

@@ -997,6 +997,7 @@
             'tpl.upload':          '上傳模板',
             'tpl.empty':           '尚無模板',
             'tpl.saveSlots':       '儲存槽位',
+            'tpl.mirrorRows':      '左右對稱：同一列的槽位使用同一張照片',
             'tpl.deleteSlot':      '刪除此槽位',
             'tpl.confirmDeleteSlot': '確定刪除此槽位？刪除後會立即儲存。',
             'tpl.lastSlot':        '至少需保留一個槽位',
@@ -1136,6 +1137,7 @@
             'tpl.upload':          'Upload Template',
             'tpl.empty':           'No templates yet',
             'tpl.saveSlots':       'Save slots',
+            'tpl.mirrorRows':      'Mirrored layout: slots in the same row share one photo',
             'tpl.deleteSlot':      'Delete slot',
             'tpl.confirmDeleteSlot': 'Delete this slot? Changes are saved immediately.',
             'tpl.lastSlot':        'At least one slot must remain',
@@ -1491,7 +1493,7 @@
                 const idx = inputs.indexOf(entry);
                 const remaining = inputs.filter(i => i !== entry).map(collectSlot);
                 try {
-                    await axios.post(`${API_URL}/api/admin/templates/${tpl.id}/slots`, { slots: remaining });
+                    await axios.post(`${API_URL}/api/admin/templates/${tpl.id}/slots`, { slots: remaining, mirror_rows: mirrorBox.checked });
                     inputs.splice(idx, 1);
                     box.remove();
                     row.remove();
@@ -1505,13 +1507,21 @@
             rows.appendChild(row);
         });
 
+        const mirrorLabel = document.createElement('label');
+        mirrorLabel.className = 'flex items-center gap-2 text-xs text-wa-blue font-light';
+        const mirrorBox = document.createElement('input');
+        mirrorBox.type = 'checkbox';
+        mirrorBox.checked = !!tpl.mirror_rows;
+        mirrorLabel.append(mirrorBox, t('tpl.mirrorRows'));
+
         const saveBtn = document.createElement('button');
         saveBtn.className = 'btn-primary';
         saveBtn.textContent = t('tpl.saveSlots');
         saveBtn.addEventListener('click', async () => {
             const slots = inputs.map(collectSlot);
             try {
-                await axios.post(`${API_URL}/api/admin/templates/${tpl.id}/slots`, { slots });
+                await axios.post(`${API_URL}/api/admin/templates/${tpl.id}/slots`, { slots, mirror_rows: mirrorBox.checked });
+                tpl.mirror_rows = mirrorBox.checked;
                 saveBtn.textContent = t('msg.saved');
                 setTimeout(() => { saveBtn.textContent = t('tpl.saveSlots'); }, 2000);
             } catch (err) {
@@ -1519,7 +1529,7 @@
             }
         });
 
-        card.append(head, preview, rows, saveBtn);
+        card.append(head, preview, rows, mirrorLabel, saveBtn);
         return card;
     }
 

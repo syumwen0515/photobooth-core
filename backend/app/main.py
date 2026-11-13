@@ -651,6 +651,7 @@ class SlotItem(BaseModel):
 
 class TemplateSlotsRequest(BaseModel):
     slots: List[SlotItem]
+    mirror_rows: Optional[bool] = None
 
 
 # ==================== 輔助函數 ====================
@@ -1501,7 +1502,16 @@ async def serve_photo_thumb(code: str, request: Request) -> FileResponse:
 # ==================== 模板 / 自拍活動 API ====================
 
 def _template_view(tpl: Dict[str, Any]) -> Dict[str, Any]:
-    return {k: tpl[k] for k in ("id", "name", "width", "height", "slots")}
+    view = {k: tpl[k] for k in ("id", "name", "width", "height", "slots")}
+    view["mirror_rows"] = bool(tpl.get("mirror_rows"))
+    return view
+
+
+def _customer_template_view(tpl: Dict[str, Any]) -> Dict[str, Any]:
+    """客戶端只看到「每張照片」一個代表槽位（左右對稱版型同列只算一張）。"""
+    view = {k: tpl[k] for k in ("id", "name", "width", "height")}
+    view["slots"] = [group[0] for group in template_service.photo_groups(tpl)]
+    return view
 
 
 @app.get(f"{API_ADMIN_PREFIX}/selfie-settings", tags=["Selfie"])
@@ -1552,7 +1562,10 @@ async def upload_template(
         _template_path(template_id).write_bytes(content)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"儲存失敗: {e}")
-    tpl = {"id": template_id, "name": safe_name, "width": width, "height": height, "slots": slots}
+    tpl = {
+        "id": template_id, "name": safe_name, "width": width, "height": height, "slots": slots,
+        "mirror_rows": template_service.looks_mirrored(slots),
+    }
     _save_templates({**templates, template_id: tpl})
     logger.info(f"✓ 模板已上傳: {template_id}（{len(slots)} 個槽位）")
     return _template_view(tpl)
@@ -1576,6 +1589,8 @@ async def update_template_slots(
                 or s.x + s.width > tpl["width"] or s.y + s.height > tpl["height"]:
             raise HTTPException(status_code=400, detail=f"槽位 {s.slot_id} 超出模板範圍")
     updated = {**tpl, "slots": [s.model_dump() for s in sorted(slots, key=lambda s: s.slot_id)]}
+    if request.mirror_rows is not None:
+        updated["mirror_rows"] = request.mirror_rows
     _save_templates({**_load_templates(), template_id: updated})
     return _template_view(updated)
 
@@ -1602,7 +1617,7 @@ async def customer_list_templates(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=429, detail="請求過於頻繁，請稍後再試")
     if not _load_selfie_config()["enabled"]:
         return {"enabled": False, "templates": []}
-    return {"enabled": True, "templates": [_template_view(t) for t in _load_templates().values()]}
+    return {"enabled": True, "templates": [_customer_template_view(t) for t in _load_templates().values()]}
 
 
 @app.get(f"{API_CUSTOMER_PREFIX}/templates/{{template_id}}/image", tags=["Selfie"])
@@ -1619,13 +1634,15 @@ async def customer_template_image(template_id: str, request: Request) -> FileRes
     )
 
 
-def _composite_job(template_id: str, slots: List[Dict[str, int]], raw_photos: List[bytes]) -> str:
+def _composite_job(template_id: str, groups: List[List[Dict[str, int]]], raw_photos: List[bytes]) -> str:
     """同步合成並寫入 incoming/，回傳檔名；供 run_in_executor 呼叫。"""
     template = template_service.open_template(_template_path(template_id).read_bytes())
-    photos = {
-        slot["slot_id"]: composite_service.decode_photo(data)
-        for slot, data in zip(slots, raw_photos)
-    }
+    photos = {}
+    for group, data in zip(groups, raw_photos):
+        photo = composite_service.decode_photo(data)
+        for slot in group:
+            photos[slot["slot_id"]] = photo
+    slots = [slot for group in groups for slot in group]
     jpeg = composite_service.encode_jpeg(composite_service.compose(template, slots, photos))
     ts = int(time.time() * 1000)
     suffix = 0
@@ -1650,9 +1667,9 @@ async def customer_composite(
     if not _load_selfie_config()["enabled"]:
         raise HTTPException(status_code=403, detail="自拍活動尚未開放")
     tpl = _get_template_or_404(template_id)
-    slots = tpl["slots"]
-    if len(files) != len(slots):
-        raise HTTPException(status_code=400, detail=f"此模板需要 {len(slots)} 張照片")
+    groups = template_service.photo_groups(tpl)
+    if len(files) != len(groups):
+        raise HTTPException(status_code=400, detail=f"此模板需要 {len(groups)} 張照片")
     raw_photos: List[bytes] = []
     for f in files:
         data = await f.read(COMPOSITE_MAX_UPLOAD_BYTES + 1)
@@ -1662,7 +1679,7 @@ async def customer_composite(
     loop = asyncio.get_running_loop()
     try:
         async with _composite_semaphore:
-            filename = await loop.run_in_executor(None, _composite_job, template_id, slots, raw_photos)
+            filename = await loop.run_in_executor(None, _composite_job, template_id, groups, raw_photos)
     except ValueError:
         raise HTTPException(status_code=400, detail="照片格式不支援或尺寸過大")
     code = _assign_code(filename)
