@@ -340,22 +340,18 @@
         });
     }
 
-    function cropImageFile(file) {
-        var slot = _template.slots[_shots.length];
+    function prepareImageFile(file) {
         return new Promise(function (resolve, reject) {
             var url = URL.createObjectURL(file);
             var img = new Image();
             img.onload = function () {
+                /* Keep the whole photo (no crop); the server fits it inside the slot without distortion */
                 var vw = img.naturalWidth, vh = img.naturalHeight;
-                var targetRatio = slot.width / slot.height;
-                var sw = vw, sh = vh;
-                if (vw / vh > targetRatio) { sw = vh * targetRatio; } else { sh = vw / targetRatio; }
-                var sx = (vw - sw) / 2, sy = (vh - sh) / 2;
-                var scale = Math.min(1, MAX_SIDE / Math.max(sw, sh));
+                var scale = Math.min(1, MAX_SIDE / Math.max(vw, vh));
                 var canvas = document.createElement('canvas');
-                canvas.width = Math.round(sw * scale);
-                canvas.height = Math.round(sh * scale);
-                canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+                canvas.width = Math.round(vw * scale);
+                canvas.height = Math.round(vh * scale);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
                 URL.revokeObjectURL(url);
                 canvas.toBlob(function (b) { b ? resolve(b) : reject(new Error('toBlob')); }, 'image/jpeg', 0.92);
             };
@@ -383,7 +379,7 @@
         setError('');
         try {
             for (var i = 0; i < files.length && _shots.length < _template.slots.length; i++) {
-                addShot(await cropImageFile(files[i]));
+                addShot(await prepareImageFile(files[i]));
             }
         } catch (err) {
             setError(t('app.fail'));

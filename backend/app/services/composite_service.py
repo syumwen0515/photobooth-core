@@ -27,15 +27,17 @@ def compose(
     slots: List[Dict[str, int]],
     photos: Dict[int, Image.Image],
 ) -> Image.Image:
-    """將 photos（slot_id → RGB）依槽位裁切貼入底圖，再以模板 Alpha 覆蓋。未提供照片的槽位保持空白。"""
+    """將 photos（slot_id → RGB）等比例縮放至完整落在槽位內（不裁切、不變形，空白處為白底）後置中貼入，再以模板 Alpha 覆蓋。未提供照片的槽位保持空白。"""
     template = template.convert("RGBA")
     canvas = Image.new("RGBA", template.size, (255, 255, 255, 255))
     for slot in slots:
         photo = photos.get(slot["slot_id"])
         if photo is None:
             continue
-        fitted = ImageOps.fit(photo, (slot["width"], slot["height"]), Image.LANCZOS)
-        canvas.paste(fitted.convert("RGBA"), (slot["x"], slot["y"]))
+        fitted = ImageOps.contain(photo, (slot["width"], slot["height"]), Image.LANCZOS)
+        offset_x = slot["x"] + (slot["width"] - fitted.width) // 2
+        offset_y = slot["y"] + (slot["height"] - fitted.height) // 2
+        canvas.paste(fitted.convert("RGBA"), (offset_x, offset_y))
     canvas.alpha_composite(template)
     return canvas.convert("RGB")
 

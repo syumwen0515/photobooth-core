@@ -43,13 +43,15 @@ class TemplateDetectionTests(unittest.TestCase):
 
 
 class CompositeTests(unittest.TestCase):
-    def test_photo_fills_slot_and_template_overlays(self):
+    def test_photo_is_contained_without_distortion_and_template_overlays(self):
         tpl = template_service.open_template(_template_png())
         slots = template_service.detect_transparent_slots(_template_png())
         photo = Image.new("RGB", (400, 100), (255, 0, 0))
         out = composite_service.compose(tpl, slots, {1: photo})
         self.assertEqual(out.size, (300, 500))
-        self.assertEqual(out.getpixel((30, 40)), (255, 0, 0))
+        # 400x100 in a 120x90 slot -> 120x30 band centered at y=60..89, white bars above/below
+        self.assertEqual(out.getpixel((30, 75)), (255, 0, 0))
+        self.assertEqual(out.getpixel((30, 40)), (255, 255, 255))
         self.assertEqual(out.getpixel((5, 5)), (10, 20, 30))
         self.assertEqual(out.getpixel((200, 250)), (255, 255, 255))
 
