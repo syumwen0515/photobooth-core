@@ -29,7 +29,7 @@ from datetime import datetime
 from app.watcher import start_watcher
 from app.ngrok_manager import start_tunnel, stop_tunnel, normalize_domain, get_tunnel_url, is_active as ngrok_is_active
 from app import auth, line_bot
-from app.services import composite_service, print_service, template_service
+from app.services import composite_service, template_service
 from app.config import (
     NGROK_DEFAULT_PORT,
     APP_TITLE, APP_VERSION, APP_DESCRIPTION,
@@ -55,7 +55,6 @@ from app.config import (
     TEMPLATE_MAX_BYTES, TEMPLATE_MAX_SLOTS,
     COMPOSITE_MAX_UPLOAD_BYTES, COMPOSITE_MAX_CONCURRENCY,
     SELFIE_RATE_LIMIT, SELFIE_RATE_WINDOW,
-    PRINT_CONFIG_FILE, PRINT_CONFIG_DEFAULTS,
 )
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
@@ -327,29 +326,6 @@ def _save_selfie_config(data: Dict[str, Any]) -> None:
     global _selfie_config_cache
     SELFIE_CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     _selfie_config_cache = dict(data)
-
-
-_print_config_cache: Optional[Dict[str, Any]] = None
-
-
-def _load_print_config() -> Dict[str, Any]:
-    global _print_config_cache
-    if _print_config_cache is None:
-        cfg = dict(PRINT_CONFIG_DEFAULTS)
-        if PRINT_CONFIG_FILE.exists():
-            try:
-                saved = json.loads(PRINT_CONFIG_FILE.read_text(encoding="utf-8"))
-                cfg.update({k: v for k, v in saved.items() if k in PRINT_CONFIG_DEFAULTS})
-            except Exception:
-                pass
-        _print_config_cache = cfg
-    return dict(_print_config_cache)
-
-
-def _save_print_config(data: Dict[str, Any]) -> None:
-    global _print_config_cache
-    PRINT_CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    _print_config_cache = dict(data)
 
 
 def _load_templates() -> Dict[str, Dict[str, Any]]:
@@ -663,11 +639,6 @@ class GallerySettingsRequest(BaseModel):
 
 class SelfieSettingsRequest(BaseModel):
     enabled: bool
-
-
-class PrintSettingsRequest(BaseModel):
-    enabled: bool
-    printer: str = ""
 
 
 class SlotItem(BaseModel):
@@ -1346,57 +1317,6 @@ async def open_incoming_folder(request: Request, pb_session: Optional[str] = Coo
         raise HTTPException(status_code=500, detail=f"無法開啟資料夾: {e}")
 
 
-@app.get(f"{API_ADMIN_PREFIX}/print-settings", tags=["Print"])
-async def get_print_settings(pb_session: Optional[str] = Cookie(default=None)) -> Dict[str, Any]:
-    _require_auth(pb_session)
-    return _load_print_config()
-
-
-@app.post(f"{API_ADMIN_PREFIX}/print-settings", tags=["Print"])
-async def update_print_settings(
-    request: PrintSettingsRequest,
-    pb_session: Optional[str] = Cookie(default=None),
-) -> Dict[str, str]:
-    _require_auth(pb_session)
-    printer = request.printer.strip()
-    if printer and not print_service.is_valid_printer_name(printer):
-        raise HTTPException(status_code=400, detail="印表機名稱格式不正確")
-    _save_print_config({"enabled": request.enabled, "printer": printer})
-    return {"message": "列印設定已儲存"}
-
-
-@app.post(f"{API_ADMIN_PREFIX}/print/{{filename}}", tags=["Print"], summary="列印 incoming 照片（僅限本機）")
-async def print_incoming(
-    filename: str,
-    request: Request,
-    pb_session: Optional[str] = Cookie(default=None),
-) -> Dict[str, str]:
-    _require_auth(pb_session)
-    # 印表機在店內電腦，僅允許本機操作，避免經 ngrok 遠端觸發實體列印
-    client_host = request.client.host if request.client else ""
-    if client_host not in ("127.0.0.1", "::1"):
-        raise HTTPException(status_code=403, detail="此功能僅限本機存取")
-    cfg = _load_print_config()
-    if not cfg["enabled"]:
-        raise HTTPException(status_code=403, detail="列印功能尚未啟用")
-    if not validate_filename_safety(filename):
-        raise HTTPException(status_code=400, detail="無效的檔案名稱")
-    file_path = INCOMING_DIR / filename
-    try:
-        file_path.resolve().relative_to(INCOMING_DIR.resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="檔案路徑驗證失敗")
-    if not file_path.is_file():
-        raise HTTPException(status_code=404, detail=f"找不到照片: {filename}")
-    loop = asyncio.get_running_loop()
-    try:
-        await loop.run_in_executor(None, print_service.print_image, file_path, cfg["printer"])
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    logger.info(f"✓ 已送出列印: {filename}")
-    return {"message": "已送出列印"}
-
-
 # ==================== ngrok 外網穿透 API ====================
 
 @app.get(f"{API_ADMIN_PREFIX}/ngrok/status", tags=["Ngrok"])
@@ -1857,15 +1777,6 @@ async def reset_system(pb_session: Optional[str] = Cookie(default=None)) -> Dict
         results["gallery_config"] = "已重置為預設值"
     except Exception as e:
         results["gallery_config"] = f"失敗: {e}"
-
-    # 重置列印設定
-    try:
-        global _print_config_cache
-        PRINT_CONFIG_FILE.unlink(missing_ok=True)
-        _print_config_cache = None
-        results["print_config"] = "已重置為預設值"
-    except Exception as e:
-        results["print_config"] = f"失敗: {e}"
 
     # 重置自拍活動設定與模板
     try:

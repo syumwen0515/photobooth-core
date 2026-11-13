@@ -199,8 +199,12 @@
         .btn-danger:active { transform: scale(0.97); }
 
         .cam-preview { width: 100%; max-width: 640px; background: #1c1c1c; border-radius: 4px; display: block; }
-        .print-btn { display: none; }
-        #incomingGrid.print-on .print-btn { display: block; }
+        #printArea { display: none; }
+        #printArea img { max-width: 100%; max-height: 100vh; display: block; margin: 0 auto; }
+        @media print {
+            body > *:not(#printArea) { display: none !important; }
+            #printArea { display: block; }
+        }
         .print-btn {
             width: 100%; padding: 4px 0; font-size: 0.75rem; font-weight: 300; border-radius: 3px;
             background: transparent; color: var(--text-main); border: none; cursor: pointer;
@@ -403,6 +407,7 @@
     </style>
 </head>
 <body class="min-h-screen relative">
+    <div id="printArea"></div>
 
 <!-- Frame corner decorations -->
 <div class="fixed inset-5 pointer-events-none z-5">
@@ -824,43 +829,6 @@
             </div>
         </div>
 
-        <!-- ▸ 列印 -->
-        <div class="wa-card">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
-                    data-acc="print-settings">
-                <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-wa-gray" data-i18n="print.title">列印</span>
-                    <span class="text-xs text-wa-blue font-light" data-i18n="print.desc">送到本機印表機</span>
-                </div>
-                <svg class="acc-arrow w-4 h-4 text-wa-blue" data-acc="print-settings"
-                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                </svg>
-            </button>
-            <div class="acc-body" id="acc-print-settings">
-                <div class="px-5 pb-5 space-y-4 border-t border-wa-light">
-                    <div class="flex items-center justify-between pt-4">
-                        <div>
-                            <span class="text-sm font-light text-wa-gray" data-i18n="print.enable">啟用照片列印</span>
-                            <span class="block text-xs text-wa-blue font-light mt-0.5" data-i18n="print.enableHint">開啟後照片卡片會出現列印按鈕（僅限在店內電腦本機操作）</span>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="printEnabled">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="space-y-1.5">
-                        <label class="text-xs text-wa-blue font-light" data-i18n="print.printer">印表機名稱（留空使用預設印表機）</label>
-                        <input id="printerName" type="text" class="wa-input w-full" maxlength="80">
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <button id="savePrintBtn" class="btn-primary" data-i18n="btn.saveApply">儲存並套用</button>
-                        <span id="printSettingsMsg" class="text-xs text-wa-blue font-light"></span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- ▸ 照片列表 -->
         <div class="wa-card">
             <div class="flex items-center justify-between px-5 py-4 border-b border-wa-light">
@@ -1092,14 +1060,8 @@
             'cam.denied':          '無法開啟相機，請確認權限、連線與 USB 串流設定',
             'cam.insecure':        '瀏覽器需要 localhost 或 HTTPS 才能使用相機',
             'cam.captured':        '✓ 已拍攝並加入上傳',
-            'print.title':         '列印',
-            'print.desc':          '送到本機印表機',
-            'print.enable':        '啟用照片列印',
-            'print.enableHint':    '開啟後照片卡片會出現列印按鈕（僅限在店內電腦本機操作）',
-            'print.printer':       '印表機名稱（留空使用預設印表機）',
             'print.btn':           '列印',
-            'print.sent':          '✓ 已送出列印',
-            'print.fail':          '列印失敗：',
+                        'print.fail':          '無法載入照片以列印',
             'photos.title':        '照片',
             'photos.upload':       '上傳照片',
             'photos.uploadPanel':  '上傳進度',
@@ -1249,14 +1211,8 @@
             'cam.denied':          'Cannot open the camera. Check permission, connection and USB streaming',
             'cam.insecure':        'The browser requires localhost or HTTPS to use the camera',
             'cam.captured':        '✓ Captured and queued for upload',
-            'print.title':         'Print',
-            'print.desc':          'Send to the local printer',
-            'print.enable':        'Enable photo printing',
-            'print.enableHint':    'Shows a print button on photo cards (local machine only)',
-            'print.printer':       'Printer name (leave empty for the default printer)',
             'print.btn':           'Print',
-            'print.sent':          '✓ Sent to printer',
-            'print.fail':          'Print failed: ',
+                        'print.fail':          'Cannot load the photo to print',
             'photos.title':        'Photos',
             'photos.upload':       'Upload Photos',
             'photos.uploadPanel':  'Upload Progress',
@@ -1465,33 +1421,6 @@
             msg.textContent = t('msg.saved');
             msg.style.display = 'inline';
             setTimeout(() => { msg.style.display = 'none'; }, 2500);
-        } catch (err) {
-            alert(t('err.saveFail') + (err.response?.data?.detail || ''));
-        }
-    }
-
-    // ═══════════════════════════════════════════════
-    // 列印設定
-    // ═══════════════════════════════════════════════
-    async function loadPrintSettings() {
-        try {
-            const res = await axios.get(`${API_URL}/api/admin/print-settings`);
-            document.getElementById('printEnabled').checked = res.data.enabled === true;
-            document.getElementById('printerName').value = res.data.printer || '';
-            document.getElementById('incomingGrid').classList.toggle('print-on', res.data.enabled === true);
-        } catch (_) {}
-    }
-
-    async function savePrintSettings() {
-        const msg = document.getElementById('printSettingsMsg');
-        try {
-            await axios.post(`${API_URL}/api/admin/print-settings`, {
-                enabled: document.getElementById('printEnabled').checked,
-                printer: document.getElementById('printerName').value.trim(),
-            });
-            msg.textContent = t('msg.saved');
-            setTimeout(() => { msg.textContent = ''; }, 2000);
-            loadPrintSettings();
         } catch (err) {
             alert(t('err.saveFail') + (err.response?.data?.detail || ''));
         }
@@ -1814,19 +1743,22 @@
         if (printBtn) printIncomingPhoto(printBtn);
     });
 
-    async function printIncomingPhoto(btn) {
-        const label = t('print.btn');
-        btn.disabled = true;
-        try {
-            await axios.post(`${API_URL}/api/admin/print/${encodeURIComponent(btn.dataset.filename)}`);
-            btn.textContent = t('print.sent');
-        } catch (err) {
-            alert(t('print.fail') + (err.response?.data?.detail || ''));
-        } finally {
-            btn.disabled = false;
-            setTimeout(() => { btn.textContent = label; }, 2000);
-        }
+    // 在管理員自己的瀏覽器開啟系統列印視窗（遠端經 ngrok 也可使用）
+    function printIncomingPhoto(btn) {
+        const area = document.getElementById('printArea');
+        const img = document.createElement('img');
+        img.onload = () => {
+            window.print();
+        };
+        img.onerror = () => {
+            area.textContent = '';
+            alert(t('print.fail'));
+        };
+        area.textContent = '';
+        area.appendChild(img);
+        img.src = `/static/incoming/${encodeURIComponent(btn.dataset.filename)}`;
     }
+    window.addEventListener('afterprint', () => { document.getElementById('printArea').textContent = ''; });
 
     function prependIncomingCard(filename, code) {
         const grid  = document.getElementById('incomingGrid');
@@ -2570,7 +2502,6 @@
             loadIncoming();
             loadGallerySettings();
             loadSelfieSettings();
-            loadPrintSettings();
             loadTemplates();
             loadNgrokStatus();
             loadLineConfig();
@@ -2621,7 +2552,6 @@
         loadIncoming();
         loadGallerySettings();
         loadSelfieSettings();
-        loadPrintSettings();
         loadTemplates();
         loadNgrokStatus();
         loadLineConfig();
@@ -2646,7 +2576,6 @@
         document.getElementById('copyNgrokUrlBtn').addEventListener('click', copyNgrokUrl);
         document.getElementById('saveGalleryBtn').addEventListener('click', saveGallerySettings);
         document.getElementById('saveSelfieBtn').addEventListener('click', saveSelfieSettings);
-        document.getElementById('savePrintBtn').addEventListener('click', savePrintSettings);
         document.getElementById('cameraStartBtn').addEventListener('click', startAdminCamera);
         document.getElementById('cameraStopBtn').addEventListener('click', stopAdminCamera);
         document.getElementById('cameraShootBtn').addEventListener('click', shootAdminCamera);

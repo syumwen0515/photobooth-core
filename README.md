@@ -16,8 +16,7 @@ photobooth-core/
 │   │   ├── line_bot.py            # LINE Webhook 處理
 │   │   ├── services/
 │   │   │   ├── template_service.py   # 模板透明槽位自動偵測（Pillow + numpy）
-│   │   │   ├── composite_service.py  # 照片裁切 / 貼入槽位 / 模板疊合 / JPEG 輸出
-│   │   │   └── print_service.py      # 本機列印（選用，預設關閉）
+│   │   │   └── composite_service.py  # 照片裁切 / 貼入槽位 / 模板疊合 / JPEG 輸出
 │   │   └── templates/
 │   │       ├── admin.html         # 管理後台介面
 │   │       ├── app.html           # 客戶自拍頁面（/app）
@@ -36,7 +35,6 @@ photobooth-core/
 │       ├── templates/             # 合成模板 PNG（按需生成）
 │       ├── templates.json         # 模板中繼資料與槽位座標（按需生成）
 │       ├── selfie_config.json     # 自拍活動開關（預設關閉，按需生成）
-│       ├── print_config.json      # 列印開關與印表機名稱（預設關閉）
 │       ├── line_config.json
 │       ├── ngrok_config.json
 │       ├── photo_codes.json
@@ -259,8 +257,6 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 | DELETE | `/api/admin/templates/{id}` | 刪除模板（需登入）|
 | GET | `/api/admin/templates/{id}/image` | 模板圖檔（需登入）|
 | GET | `/app` | 客戶自拍頁（需 HTTPS 才能開啟相機；僅此路徑 `Permissions-Policy: camera=(self)`）|
-| GET/POST | `/api/admin/print-settings` | 列印設定（啟用、印表機名稱；需登入）|
-| POST | `/api/admin/print/{filename}` | 列印指定照片（需登入、僅限本機、需已啟用）|
 | GET | `/api/v1/customer/templates` | 可用模板列表（活動關閉時 `enabled:false`）|
 | GET | `/api/v1/customer/templates/{id}/image` | 模板圖檔（活動關閉時 403）|
 | POST | `/api/v1/customer/composite` | `multipart/form-data`：`template_id` + `files`（照片數須等於槽位數，依槽位順序）；回傳 `code` 與 `download_url`。速率限制：`SELFIE_RATE_LIMIT`/分/IP |
@@ -369,6 +365,6 @@ LINE 交付沿用現有流程：客戶在 LINE 輸入取件碼取得 `/download/
 ## 相機拍照與列印（選用）
 
 - **相機**：後台「相機拍照」使用瀏覽器 `getUserMedia`，將相機當 USB 網路攝影機。Sony A7C / A7 IV 請開啟 USB 串流或安裝 Imaging Edge Webcam；Canon 請安裝 EOS Webcam Utility。需在 localhost 或 HTTPS 開啟後台；拍攝結果加入既有上傳流程。
-- **列印**：後台「列印」開啟後，照片卡片會出現列印按鈕；僅限在店內電腦本機操作，Windows 使用預設或指定印表機，Linux 使用 `lp`。
+- **列印**：照片卡片的「列印」按鈕會在管理員自己的瀏覽器開啟系統列印視窗（經 ngrok 遠端也可使用），由該裝置選擇印表機。
 - **模板偵測**：與影像邊緣相連的透明區在存在內部透明區時會被忽略（視為外圍留白）。
 - `start.bat` 啟動前會檢查 numpy，缺少時自動安裝 `backend\requirements.txt`。

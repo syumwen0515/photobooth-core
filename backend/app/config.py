@@ -175,10 +175,6 @@ COMPOSITE_MAX_CONCURRENCY = 2                   # 同時合成的工作數
 COMPOSITE_JPEG_QUALITY = 92
 SELFIE_RATE_LIMIT = int(os.getenv("SELFIE_RATE_LIMIT", "6"))  # 每個 IP 每分鐘最多合成 N 次
 SELFIE_RATE_WINDOW = 60  # 秒
-PRINT_CONFIG_FILE = STORAGE_DIR / "print_config.json"
-PRINT_CONFIG_DEFAULTS: dict = {"enabled": False, "printer": ""}
-PRINT_TIMEOUT_SECONDS = 30
-PRINT_PRINTER_NAME_PATTERN = r"[\w .()\-]{1,80}"  # 印表機名稱白名單（不含引號、斜線與 shell 特殊字元）
 
 for directory in [BG_DIR, THUMB_DIR, FONTS_DIR, TEMPLATES_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
