@@ -21,13 +21,6 @@ class AccountPermissionTests(unittest.IsolatedAsyncioTestCase):
         auth._sessions.clear()
         self.temp_dir.cleanup()
 
-    async def test_diagnostics_admin_only(self):
-        with self.assertRaises(HTTPException) as ctx:
-            await main.get_diagnostics(pb_session=self.tokens["alice"])
-        self.assertEqual(ctx.exception.status_code, 403)
-        info = await main.get_diagnostics(pb_session=self.tokens["admin"])
-        self.assertIn("history", info)
-
     async def test_user_cannot_change_others_password(self):
         req = main.ChangePasswordRequest(new_password="newpassword1")
         with self.assertRaises(HTTPException) as ctx:

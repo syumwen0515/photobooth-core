@@ -458,7 +458,6 @@ function loadBg(src) {
 const ts = Date.now();
 const cvs = document.createElement('canvas');
 const supportsWebP = cvs.toDataURL('image/webp').startsWith('data:image/webp');
-const galleryAccept = supportsWebP ? 'image/webp,image/jpeg,image/*' : 'image/jpeg,image/*';
 loadBg(supportsWebP ? '/static/bg/bg.webp?' + ts : '/static/bg/bg.jpg?' + ts);
 
 /* ── Font / index text ── */
@@ -521,53 +520,18 @@ function drawToCanvas(canvas, item, url, idx) {
     img.src = url;
 }
 
-/* 同時最多 4 個縮圖請求，且僅在接近視窗時才載入，避免一次塞滿 ngrok 隧道 */
-var GALLERY_MAX_PARALLEL = 4;
-var galleryQueue = [];
-var galleryActive = 0;
-
-function pumpGalleryQueue() {
-    while (galleryActive < GALLERY_MAX_PARALLEL && galleryQueue.length) {
-        galleryActive++;
-        galleryQueue.shift()(function () { galleryActive--; pumpGalleryQueue(); });
-    }
-}
-
-var galleryObserver = ('IntersectionObserver' in window)
-    ? new IntersectionObserver(function (entries) {
-        entries.forEach(function (en) {
-            if (en.isIntersecting) {
-                galleryObserver.unobserve(en.target);
-                en.target._startLoad();
-            }
-        });
-    }, { root: document.getElementById('scroll-root'), rootMargin: '300px 0px' })
-    : null;
-
 function loadPhotoToCanvas(filename, canvas, item, idx, wmVersion) {
     var url = '/api/gallery/thumb/' + encodeURIComponent(filename);
     if (wmVersion) url += '?v=' + wmVersion;
-    function start() {
-        galleryQueue.push(function (done) {
-            fetch(url, { headers: { Accept: galleryAccept } })
-                .then(function (r) { return r.ok ? r.blob() : Promise.reject(); })
-                .then(function (blob) {
-                    drawToCanvas(canvas, item, URL.createObjectURL(blob), idx);
-                })
-                .catch(function () {
-                    item.classList.remove('loading');
-                    item.classList.add('revealed');
-                })
-                .then(done);
+    fetch(url)
+        .then(function (r) { return r.ok ? r.blob() : Promise.reject(); })
+        .then(function (blob) {
+            drawToCanvas(canvas, item, URL.createObjectURL(blob), idx);
+        })
+        .catch(function () {
+            item.classList.remove('loading');
+            item.classList.add('revealed');
         });
-        pumpGalleryQueue();
-    }
-    if (galleryObserver) {
-        item._startLoad = start;
-        galleryObserver.observe(item);
-    } else {
-        start();
-    }
 }
 
 function loadGallery() {

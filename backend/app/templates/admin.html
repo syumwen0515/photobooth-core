@@ -198,19 +198,6 @@
         .btn-danger:hover { border-color: rgba(248, 113, 113, 0.55); color: rgba(220, 60, 60, 0.85); }
         .btn-danger:active { transform: scale(0.97); }
 
-        .cam-preview { width: 100%; max-width: 640px; background: #1c1c1c; border-radius: 4px; display: block; }
-        #printArea { display: none; }
-        #printArea img { max-width: 100%; max-height: 100vh; display: block; margin: 0 auto; }
-        @media print {
-            body > *:not(#printArea) { display: none !important; }
-            #printArea { display: block; }
-        }
-        .print-btn {
-            width: 100%; padding: 4px 0; font-size: 0.75rem; font-weight: 300; border-radius: 3px;
-            background: transparent; color: var(--text-main); border: none; cursor: pointer;
-            transition: color 0.2s, background 0.2s; font-family: 'Noto Sans JP', sans-serif;
-        }
-        .print-btn:hover { background: rgba(184, 197, 214, 0.18); }
         /* Photo card delete button */
         .del-btn {
             width: 100%;
@@ -357,25 +344,7 @@
         /* Misc elements */
         #bgImg              { max-height: 160px; object-fit: cover; }
         #lineDot, #ngrokDot { background: var(--wa-light); }
-        #gallerySettingsMsg, #selfieSettingsMsg { display: none; }
-        #saveSelfieBtn    { font-size: 0.75rem; padding: 6px 16px; }
-        #templateUploadLabel { font-size: 0.7rem; padding: 5px 12px; }
-        #templateList { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-        #templateList > .col-span-full { grid-column: 1 / -1; }
-        .tpl-card { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
-        .tpl-info { flex: 1 1 140px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-        .tpl-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-        .tpl-actions button { font-size: 0.7rem; padding: 4px 10px; }
-        .tpl-slots { display: none; flex: 1 0 100%; max-height: 200px; overflow-y: auto; }
-        .tpl-slots.open { display: block; }
-        .tpl-preview { position: relative; width: 96px; flex: none; background-color: #e8e8e8;
-            background-image: linear-gradient(45deg, #d0d0d0 25%, transparent 25%, transparent 75%, #d0d0d0 75%),
-                              linear-gradient(45deg, #d0d0d0 25%, transparent 25%, transparent 75%, #d0d0d0 75%);
-            background-size: 16px 16px; background-position: 0 0, 8px 8px; }
-        .tpl-preview img { display: block; width: 100%; position: relative; }
-        .tpl-slot-box { position: absolute; border: 2px solid #e04f5f; background: rgba(224,79,95,0.18);
-            color: #e04f5f; font-size: 0.7rem; pointer-events: none; z-index: 2; }
-        .tpl-slot-input { width: 56px; padding: 1px 4px; }
+        #gallerySettingsMsg { display: none; }
         .bottom-text-admin  { font-size: 0.52rem; letter-spacing: 0.28em; color: rgba(184,197,214,0.45); font-weight: 300; }
 
         /* Modal */
@@ -387,7 +356,6 @@
         .reset-acc-body-border { border-top: 1px solid rgba(248,113,113,0.15); }
         .reset-warning-box     { background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.15); }
         #resetResult           { background: var(--wa-cream); border: 1px solid var(--border); color: var(--text-main); }
-        .perf-stat { border: 1px solid var(--border); padding: 0.5rem 0.75rem; }
         .acc-trigger[data-acc="reset"]:hover { background: rgba(248,113,113,0.04); }
 
         /* Incoming card (JS-rendered) */
@@ -416,7 +384,6 @@
     </style>
 </head>
 <body class="min-h-screen relative">
-    <div id="printArea"></div>
 
 <!-- Frame corner decorations -->
 <div class="fixed inset-5 pointer-events-none z-5">
@@ -762,82 +729,6 @@
             </div>
         </div>
 
-        <!-- ▸ 自拍活動與模板 -->
-        <div class="wa-card">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
-                    data-acc="selfie-settings">
-                <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-wa-gray" data-i18n="selfie.title">自拍活動與模板</span>
-                    <span class="text-xs text-wa-blue font-light" data-i18n="selfie.desc">客戶自拍頁 /app</span>
-                </div>
-                <svg class="acc-arrow w-4 h-4 text-wa-blue" data-acc="selfie-settings"
-                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                </svg>
-            </button>
-            <div class="acc-body" id="acc-selfie-settings">
-                <div class="px-5 pb-5 space-y-4 border-t border-wa-light">
-                    <div class="flex items-center justify-between pt-4">
-                        <div>
-                            <span class="text-sm font-light text-wa-gray" data-i18n="selfie.enable">開放客戶自拍</span>
-                            <span class="block text-xs text-wa-blue font-light mt-0.5" data-i18n="selfie.enableHint">開啟後客戶可透過 /app 自拍並合成（需 HTTPS）</span>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="selfieEnabled">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <button id="saveSelfieBtn" class="btn-primary" data-i18n="btn.saveApply">儲存並套用</button>
-                        <span id="selfieSettingsMsg" class="text-xs text-wa-blue font-light"></span>
-                    </div>
-                    <div class="flex items-center justify-between border-t border-wa-light pt-4">
-                        <div>
-                            <span class="text-sm font-light text-wa-gray" data-i18n="tpl.title">模板</span>
-                            <span class="block text-xs text-wa-blue font-light mt-0.5" data-i18n="tpl.hint">上傳含透明區域的 PNG，系統自動偵測照片槽位</span>
-                        </div>
-                        <label id="templateUploadLabel" class="cursor-pointer btn-primary" data-i18n="tpl.upload">
-                            上傳模板
-                            <input type="file" id="templateUploadFile" accept=".png" class="hidden">
-                        </label>
-                    </div>
-                    <div id="templateList" class="space-y-4"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ▸ 相機拍照 -->
-        <div class="wa-card">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
-                    data-acc="camera">
-                <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-wa-gray" data-i18n="cam.title">相機拍照</span>
-                    <span class="text-xs text-wa-blue font-light" data-i18n="cam.desc">USB 網路攝影機模式</span>
-                </div>
-                <svg class="acc-arrow w-4 h-4 text-wa-blue" data-acc="camera"
-                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                </svg>
-            </button>
-            <div class="acc-body" id="acc-camera">
-                <div class="px-5 pb-5 space-y-4 border-t border-wa-light">
-                    <span class="block text-xs text-wa-blue font-light pt-4" data-i18n="cam.hint">Sony A7C / A7 IV 請在相機開啟 USB 串流（USB Streaming）或安裝 Imaging Edge Webcam；Canon 請安裝 EOS Webcam Utility。連線後可在下方選擇該鏡頭拍照（需 localhost 或 HTTPS）。</span>
-                    <div class="flex items-center gap-3 flex-wrap">
-                        <select id="cameraSelect" class="wa-input"></select>
-                        <button id="cameraStartBtn" class="btn-primary" data-i18n="cam.start">開啟相機</button>
-                        <button id="cameraStopBtn" class="btn-danger hidden" data-i18n="cam.stop">關閉相機</button>
-                    </div>
-                    <div id="cameraStage" class="hidden space-y-3">
-                        <video id="cameraVideo" class="cam-preview" playsinline autoplay muted></video>
-                        <div class="flex items-center gap-3">
-                            <button id="cameraShootBtn" class="btn-primary" data-i18n="cam.shoot">拍攝</button>
-                            <span id="cameraMsg" class="text-xs text-wa-blue font-light"></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- ▸ 照片列表 -->
         <div class="wa-card">
             <div class="flex items-center justify-between px-5 py-4 border-b border-wa-light">
@@ -871,28 +762,6 @@
     <!-- Tab: 系統                                           -->
     <!-- ════════════════════════════════════════════════════ -->
     <div id="tab-system" class="tab-panel anim d4 space-y-3">
-
-        <!-- ▸ 系統效能（僅 admin 可見） -->
-        <div class="wa-card hidden" id="perfCard">
-            <button class="acc-trigger w-full flex items-center justify-between px-5 py-4 transition-colors"
-                    data-acc="perf">
-                <div class="flex items-center gap-3">
-                    <span class="text-base font-light text-wa-gray" data-i18n="perf.title">系統效能</span>
-                    <span class="text-xs text-wa-blue font-light" data-i18n="perf.desc">即時監控（僅 admin 可見）</span>
-                </div>
-                <svg class="acc-arrow w-4 h-4 text-wa-blue" data-acc="perf"
-                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                </svg>
-            </button>
-            <div class="acc-body" id="acc-perf">
-                <div class="px-5 pb-5 space-y-4 border-t border-wa-light">
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4" id="perfStats"></div>
-                    <div class="space-y-3" id="perfCharts"></div>
-                    <p class="text-xs text-wa-blue font-light" id="perfHint"></p>
-                </div>
-            </div>
-        </div>
 
         <!-- ▸ 帳號管理 -->
         <div class="wa-card">
@@ -1008,11 +877,6 @@
 
 <script nonce="__CSP_NONCE__">
     const API_URL = '';
-    const WEBP_SUPPORTED = (() => {
-        const canvas = document.createElement('canvas');
-        return canvas.toDataURL('image/webp').startsWith('data:image/webp');
-    })();
-    const IMAGE_ACCEPT = WEBP_SUPPORTED ? 'image/webp,image/png,image/*' : 'image/png,image/*';
 
     // ═══════════════════════════════════════════════
     // i18n — Translations
@@ -1070,36 +934,6 @@
             'gallery.enableHint':  '關閉後首頁只顯示 Hero 畫面',
             'gallery.watermark':   '浮水印文字',
             'gallery.watermarkHint': '顯示於公開 Gallery 縮圖，最多 40 字元',
-            'selfie.title':        '自拍活動與模板',
-            'selfie.desc':         '客戶自拍頁 /app',
-            'selfie.enable':       '開放客戶自拍',
-            'selfie.enableHint':   '開啟後客戶可透過 /app 自拍並合成（需 HTTPS）',
-            'tpl.title':           '模板',
-            'tpl.hint':            '上傳含透明區域的 PNG，系統自動偵測照片槽位',
-            'tpl.upload':          '上傳模板',
-            'tpl.empty':           '尚無模板',
-            'tpl.saveSlots':       '儲存槽位',
-            'tpl.editSlots':       '編輯槽位',
-            'tpl.hideSlots':       '收合槽位',
-            'tpl.mirrorRows':      '左右對稱：同一列的槽位使用同一張照片',
-            'tpl.deleteSlot':      '刪除此槽位',
-            'tpl.confirmDeleteSlot': '確定刪除此槽位？刪除後會立即儲存。',
-            'tpl.lastSlot':        '至少需保留一個槽位',
-            'tpl.delete':          '刪除',
-            'tpl.deleteConfirm':   '確定刪除此模板？',
-            'tpl.slotCount':       '個槽位',
-            'tpl.uploadFail':      '模板上傳失敗：',
-            'cam.title':           '相機拍照',
-            'cam.desc':            'USB 網路攝影機模式',
-            'cam.hint':            'Sony A7C / A7 IV 請在相機開啟 USB 串流（USB Streaming）或安裝 Imaging Edge Webcam；Canon 請安裝 EOS Webcam Utility。連線後可在下方選擇該鏡頭拍照（需 localhost 或 HTTPS）。',
-            'cam.start':           '開啟相機',
-            'cam.stop':            '關閉相機',
-            'cam.shoot':           '拍攝',
-            'cam.denied':          '無法開啟相機，請確認權限、連線與 USB 串流設定',
-            'cam.insecure':        '瀏覽器需要 localhost 或 HTTPS 才能使用相機',
-            'cam.captured':        '✓ 已拍攝並加入上傳',
-            'print.btn':           '列印',
-                        'print.fail':          '無法載入照片以列印',
             'photos.title':        '照片',
             'photos.upload':       '上傳照片',
             'photos.uploadPanel':  '上傳進度',
@@ -1111,18 +945,6 @@
             'photos.loadFail':     '載入失敗',
             'photos.code':         '取件碼',
             'photos.delete':       '刪除',
-            'perf.title':          '系統效能',
-            'perf.desc':           '即時監控（僅 admin 可見）',
-            'perf.cpu':            'CPU（單核 %）',
-            'perf.mem':            '記憶體（MB）',
-            'perf.lag':            '事件迴圈延遲（ms）',
-            'perf.ws':             'WebSocket 連線',
-            'perf.thumbs':         '縮圖快取',
-            'perf.incoming':       '照片數量',
-            'perf.inflight':       '縮圖生成中',
-            'perf.threads':        '執行緒',
-            'perf.hint':           '每 {s} 秒更新；延遲持續偏高（>200ms）代表伺服器忙碌，網頁會變卡。',
-            'perf.na':             '無資料',
             'accounts.title':      '帳號管理',
             'accounts.desc':       '管理員帳號設定',
             'accounts.addTitle':   '新增管理員帳號',
@@ -1235,36 +1057,6 @@
             'gallery.enableHint':  'When off, the homepage shows only the Hero screen',
             'gallery.watermark':   'Watermark text',
             'gallery.watermarkHint': 'Shown on public gallery thumbnails. Max 40 characters.',
-            'selfie.title':        'Selfie Event & Templates',
-            'selfie.desc':         'Customer selfie page /app',
-            'selfie.enable':       'Open customer selfie',
-            'selfie.enableHint':   'When on, customers can shoot and compose at /app (HTTPS required)',
-            'tpl.title':           'Templates',
-            'tpl.hint':            'Upload a PNG with transparent areas; photo slots are detected automatically',
-            'tpl.upload':          'Upload Template',
-            'tpl.empty':           'No templates yet',
-            'tpl.saveSlots':       'Save slots',
-            'tpl.editSlots':       'Edit slots',
-            'tpl.hideSlots':       'Hide slots',
-            'tpl.mirrorRows':      'Mirrored layout: slots in the same row share one photo',
-            'tpl.deleteSlot':      'Delete slot',
-            'tpl.confirmDeleteSlot': 'Delete this slot? Changes are saved immediately.',
-            'tpl.lastSlot':        'At least one slot must remain',
-            'tpl.delete':          'Delete',
-            'tpl.deleteConfirm':   'Delete this template?',
-            'tpl.slotCount':       'slot(s)',
-            'tpl.uploadFail':      'Template upload failed: ',
-            'cam.title':           'Camera',
-            'cam.desc':            'USB webcam mode',
-            'cam.hint':            'Sony A7C / A7 IV: enable USB Streaming or install Imaging Edge Webcam. Canon: install EOS Webcam Utility. Then pick the camera below (requires localhost or HTTPS).',
-            'cam.start':           'Start camera',
-            'cam.stop':            'Stop camera',
-            'cam.shoot':           'Shoot',
-            'cam.denied':          'Cannot open the camera. Check permission, connection and USB streaming',
-            'cam.insecure':        'The browser requires localhost or HTTPS to use the camera',
-            'cam.captured':        '✓ Captured and queued for upload',
-            'print.btn':           'Print',
-                        'print.fail':          'Cannot load the photo to print',
             'photos.title':        'Photos',
             'photos.upload':       'Upload Photos',
             'photos.uploadPanel':  'Upload Progress',
@@ -1276,18 +1068,6 @@
             'photos.loadFail':     'Load failed',
             'photos.code':         'Code',
             'photos.delete':       'Delete',
-            'perf.title':          'System Performance',
-            'perf.desc':           'Live monitor (admin only)',
-            'perf.cpu':            'CPU (% of one core)',
-            'perf.mem':            'Memory (MB)',
-            'perf.lag':            'Event-loop lag (ms)',
-            'perf.ws':             'WebSocket clients',
-            'perf.thumbs':         'Thumbnail cache',
-            'perf.incoming':       'Photos',
-            'perf.inflight':       'Thumbnails generating',
-            'perf.threads':        'Threads',
-            'perf.hint':           'Updates every {s}s; sustained lag above 200 ms means the server is busy and pages will feel slow.',
-            'perf.na':             'N/A',
             'accounts.title':      'Accounts',
             'accounts.desc':       'Admin account settings',
             'accounts.addTitle':   'Add admin account',
@@ -1396,8 +1176,6 @@
 
     function toggleLang() {
         applyLang(_lang === 'zh-TW' ? 'en' : 'zh-TW');
-        loadTemplates();
-        renderPerf();
     }
 
     // ═══════════════════════════════════════════════
@@ -1434,7 +1212,6 @@
         tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
         tabPanels.forEach(p => p.classList.toggle('active', p.id === `tab-${tabId}`));
         history.replaceState(null, '', `#${tabId}`);
-        if (typeof updatePerfPolling === 'function') updatePerfPolling();
     }
 
     tabBtns.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
@@ -1455,107 +1232,8 @@
             const isOpen = body.classList.contains('open');
             body.classList.toggle('open', !isOpen);
             arrow.classList.toggle('open', !isOpen);
-            if (id === 'perf') updatePerfPolling();
         });
     });
-
-    // ═══════════════════════════════════════════════
-    // 系統效能（僅 admin）
-    // ═══════════════════════════════════════════════
-    let _perfTimer = null;
-    let _perfData = null;
-    const PERF_CHARTS = [
-        { key: 'cpu',         label: 'perf.cpu', color: '#b8c5d6' },
-        { key: 'rss_mb',      label: 'perf.mem', color: '#8fb8a0' },
-        { key: 'loop_lag_ms', label: 'perf.lag', color: '#e0a77a' },
-    ];
-
-    function _sparkline(values, color) {
-        const W = 300, H = 48;
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-        svg.setAttribute('preserveAspectRatio', 'none');
-        svg.setAttribute('class', 'w-full');
-        svg.setAttribute('height', H);
-        const nums = values.filter(v => v !== null && v !== undefined);
-        if (nums.length < 2) return svg;
-        const max = Math.max(...nums, 1);
-        const pts = values.map((v, i) => `${(i / (values.length - 1)) * W},${H - 2 - ((v || 0) / max) * (H - 4)}`).join(' ');
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-        line.setAttribute('points', pts);
-        line.setAttribute('fill', 'none');
-        line.setAttribute('stroke', color);
-        line.setAttribute('stroke-width', '1.5');
-        line.setAttribute('vector-effect', 'non-scaling-stroke');
-        svg.appendChild(line);
-        return svg;
-    }
-
-    function renderPerf() {
-        const d = _perfData;
-        if (!d) return;
-        const last = d.history[d.history.length - 1] || {};
-        const fmt = v => (v === null || v === undefined) ? t('perf.na') : v;
-        const stats = [
-            ['perf.ws', d.ws_connections],
-            ['perf.thumbs', `${d.thumb_files} / ${d.thumb_mb} MB`],
-            ['perf.incoming', d.incoming_files],
-            ['perf.inflight', d.thumb_inflight],
-            ['perf.threads', fmt(last.threads)],
-        ];
-        const statsEl = document.getElementById('perfStats');
-        statsEl.replaceChildren(...stats.map(([k, v]) => {
-            const box = document.createElement('div');
-            box.className = 'perf-stat';
-            const val = document.createElement('div');
-            val.className = 'text-base font-light text-wa-gray';
-            val.textContent = v;
-            const lab = document.createElement('div');
-            lab.className = 'text-xs text-wa-blue font-light';
-            lab.textContent = t(k);
-            box.append(val, lab);
-            return box;
-        }));
-        const chartsEl = document.getElementById('perfCharts');
-        chartsEl.replaceChildren(...PERF_CHARTS.map(c => {
-            const vals = d.history.map(h => h[c.key]);
-            const cur = vals.length ? vals[vals.length - 1] : null;
-            const wrap = document.createElement('div');
-            const head = document.createElement('div');
-            head.className = 'flex justify-between text-xs font-light text-wa-blue';
-            const l = document.createElement('span');
-            l.textContent = t(c.label);
-            const r = document.createElement('span');
-            r.textContent = fmt(cur);
-            head.append(l, r);
-            wrap.append(head, _sparkline(vals, c.color));
-            return wrap;
-        }));
-        document.getElementById('perfHint').textContent = t('perf.hint').replace('{s}', d.sample_interval);
-    }
-
-    async function loadPerf() {
-        try {
-            const res = await axios.get(`${API_URL}/api/admin/diagnostics`);
-            _perfData = res.data;
-            renderPerf();
-        } catch (e) { /* 非 admin 或暫時失敗：略過 */ }
-    }
-
-    function updatePerfPolling() {
-        const visible = !document.getElementById('perfCard').classList.contains('hidden')
-            && document.getElementById('tab-system').classList.contains('active')
-            && document.getElementById('acc-perf').classList.contains('open')
-            && !document.hidden;
-        if (visible && !_perfTimer) {
-            loadPerf();
-            _perfTimer = setInterval(loadPerf, 5000);
-        } else if (!visible && _perfTimer) {
-            clearInterval(_perfTimer);
-            _perfTimer = null;
-        }
-    }
-    document.addEventListener('visibilitychange', updatePerfPolling);
 
     // ═══════════════════════════════════════════════
     // Auth / Logout
@@ -1588,284 +1266,6 @@
             setTimeout(() => { msg.style.display = 'none'; }, 2500);
         } catch (err) {
             alert(t('err.saveFail') + (err.response?.data?.detail || ''));
-        }
-    }
-
-    // ═══════════════════════════════════════════════
-    // 相機拍照（USB 網路攝影機模式，沿用既有上傳佇列）
-    // ═══════════════════════════════════════════════
-    const CAM_MAX_SIDE = 4096;
-    let _camStream = null;
-
-    async function refreshCameraList() {
-        const sel = document.getElementById('cameraSelect');
-        const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
-        const current = _camStream?.getVideoTracks()[0]?.getSettings().deviceId
-            || localStorage.getItem('pb-camera') || '';
-        sel.textContent = '';
-        devices.forEach((d, i) => {
-            const opt = document.createElement('option');
-            opt.value = d.deviceId;
-            opt.textContent = d.label || `Camera ${i + 1}`;
-            sel.appendChild(opt);
-        });
-        if (current) sel.value = current;
-    }
-
-    async function startAdminCamera() {
-        stopAdminCamera();
-        if (!navigator.mediaDevices?.getUserMedia) {
-            alert(t('cam.insecure'));
-            return;
-        }
-        const deviceId = document.getElementById('cameraSelect').value;
-        const video = { width: { ideal: 3840 }, height: { ideal: 2160 } };
-        if (deviceId) video.deviceId = { exact: deviceId };
-        try {
-            _camStream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
-        } catch (_) {
-            alert(t('cam.denied'));
-            return;
-        }
-        const el = document.getElementById('cameraVideo');
-        el.srcObject = _camStream;
-        el.play().catch(() => {});
-        await refreshCameraList();
-        localStorage.setItem('pb-camera', document.getElementById('cameraSelect').value);
-        document.getElementById('cameraStage').classList.remove('hidden');
-        document.getElementById('cameraStopBtn').classList.remove('hidden');
-    }
-
-    function stopAdminCamera() {
-        if (_camStream) {
-            _camStream.getTracks().forEach(tr => tr.stop());
-            _camStream = null;
-        }
-        document.getElementById('cameraVideo').srcObject = null;
-        document.getElementById('cameraStage').classList.add('hidden');
-        document.getElementById('cameraStopBtn').classList.add('hidden');
-    }
-
-    function shootAdminCamera() {
-        const el = document.getElementById('cameraVideo');
-        if (!_camStream || !el.videoWidth) return;
-        const scale = Math.min(1, CAM_MAX_SIDE / Math.max(el.videoWidth, el.videoHeight));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(el.videoWidth * scale);
-        canvas.height = Math.round(el.videoHeight * scale);
-        canvas.getContext('2d').drawImage(el, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(blob => {
-            if (!blob) return;
-            enqueueUploads([new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' })]);
-            const msg = document.getElementById('cameraMsg');
-            msg.textContent = t('cam.captured');
-            setTimeout(() => { msg.textContent = ''; }, 2000);
-        }, 'image/jpeg', 0.92);
-    }
-
-    // ═══════════════════════════════════════════════
-    // 自拍活動與模板
-    // ═══════════════════════════════════════════════
-    async function loadSelfieSettings() {
-        try {
-            const res = await axios.get(`${API_URL}/api/admin/selfie-settings`);
-            document.getElementById('selfieEnabled').checked = res.data.enabled === true;
-        } catch (_) {}
-    }
-
-    async function saveSelfieSettings() {
-        const msg = document.getElementById('selfieSettingsMsg');
-        try {
-            await axios.post(`${API_URL}/api/admin/selfie-settings`, {
-                enabled: document.getElementById('selfieEnabled').checked,
-            });
-            msg.textContent = t('msg.saved');
-            msg.style.display = 'inline';
-            setTimeout(() => { msg.style.display = 'none'; }, 2500);
-        } catch (err) {
-            alert(t('err.saveFail') + (err.response?.data?.detail || ''));
-        }
-    }
-
-    async function loadTemplates() {
-        const list = document.getElementById('templateList');
-        try {
-            const res = await axios.get(`${API_URL}/api/admin/templates`);
-            list.textContent = '';
-            if (!res.data.templates.length) {
-                const empty = document.createElement('div');
-                empty.className = 'col-span-full text-center py-6 text-wa-blue font-light text-sm';
-                empty.textContent = t('tpl.empty');
-                list.appendChild(empty);
-                return;
-            }
-            res.data.templates.forEach(tpl => list.appendChild(buildTemplateCard(tpl)));
-        } catch (_) {}
-    }
-
-    function buildTemplateCard(tpl) {
-        const card = document.createElement('div');
-        card.className = 'border border-wa-light p-3 tpl-card';
-
-        const title = document.createElement('span');
-        title.className = 'text-xs font-light text-wa-gray break-words';
-        title.textContent = `${tpl.name}（${tpl.width}×${tpl.height}，${tpl.slots.length} ${t('tpl.slotCount')}）`;
-        const delBtn = document.createElement('button');
-        delBtn.className = 'btn-danger';
-        delBtn.textContent = t('tpl.delete');
-        delBtn.addEventListener('click', async () => {
-            if (!confirm(t('tpl.deleteConfirm'))) return;
-            try {
-                await axios.delete(`${API_URL}/api/admin/templates/${tpl.id}`);
-                loadTemplates();
-            } catch (err) {
-                alert(err.response?.data?.detail || '');
-            }
-        });
-
-        const preview = document.createElement('div');
-        preview.className = 'tpl-preview';
-        const img = document.createElement('img');
-        img.alt = tpl.name;
-        preview.appendChild(img);
-        axios.get(`${API_URL}/api/admin/templates/${tpl.id}/image`, {
-            responseType: 'blob',
-            headers: { Accept: IMAGE_ACCEPT }
-        })
-            .then(r => { img.src = URL.createObjectURL(r.data); })
-            .catch(() => {});
-
-        const rows = document.createElement('div');
-        rows.className = 'space-y-2 tpl-slots';
-        const inputs = [];
-        const boxes = [];
-        const fields = ['x', 'y', 'width', 'height'];
-
-        const syncBox = (box, vals) => {
-            box.style.left = (vals.x / tpl.width * 100) + '%';
-            box.style.top = (vals.y / tpl.height * 100) + '%';
-            box.style.width = (vals.width / tpl.width * 100) + '%';
-            box.style.height = (vals.height / tpl.height * 100) + '%';
-        };
-
-        const collectSlot = ({ slot_id, fields: f }) => ({
-            slot_id,
-            x: Number(f.x.value) || 0,
-            y: Number(f.y.value) || 0,
-            width: Number(f.width.value) || 0,
-            height: Number(f.height.value) || 0,
-        });
-
-        tpl.slots.slice().forEach(slot => {
-            const box = document.createElement('div');
-            box.className = 'tpl-slot-box';
-            box.textContent = slot.slot_id;
-            preview.appendChild(box);
-            syncBox(box, slot);
-            boxes.push(box);
-
-            const row = document.createElement('div');
-            row.className = 'flex items-center gap-2 flex-wrap text-xs text-wa-blue font-light';
-            row.append(`#${slot.slot_id}`);
-            const rowInputs = {};
-            fields.forEach(f => {
-                const lab = document.createElement('label');
-                lab.className = 'flex items-center gap-1';
-                lab.append(f);
-                const inp = document.createElement('input');
-                inp.type = 'number';
-                inp.min = '0';
-                inp.className = 'wa-input tpl-slot-input';
-                inp.value = slot[f];
-                inp.addEventListener('input', () => {
-                    const vals = {};
-                    fields.forEach(k => { vals[k] = Number(rowInputs[k].value) || 0; });
-                    syncBox(box, vals);
-                });
-                rowInputs[f] = inp;
-                lab.appendChild(inp);
-                row.appendChild(lab);
-            });
-            const entry = { slot_id: slot.slot_id, fields: rowInputs };
-            inputs.push(entry);
-            const delBtn = document.createElement('button');
-            delBtn.type = 'button';
-            delBtn.className = 'btn-danger';
-            delBtn.textContent = t('tpl.deleteSlot');
-            delBtn.addEventListener('click', async () => {
-                if (inputs.length <= 1) { alert(t('tpl.lastSlot')); return; }
-                if (!confirm(t('tpl.confirmDeleteSlot'))) return;
-                const idx = inputs.indexOf(entry);
-                const remaining = inputs.filter(i => i !== entry).map(collectSlot);
-                try {
-                    await axios.post(`${API_URL}/api/admin/templates/${tpl.id}/slots`, { slots: remaining, mirror_rows: mirrorBox.checked });
-                    inputs.splice(idx, 1);
-                    box.remove();
-                    row.remove();
-                    tpl.slots = tpl.slots.filter(s => s.slot_id !== entry.slot_id);
-                    title.textContent = `${tpl.name}（${tpl.width}×${tpl.height}，${tpl.slots.length} ${t('tpl.slotCount')}）`;
-                } catch (err) {
-                    alert(t('err.saveFail') + (err.response?.data?.detail || ''));
-                }
-            });
-            row.appendChild(delBtn);
-            rows.appendChild(row);
-        });
-
-        const mirrorLabel = document.createElement('label');
-        mirrorLabel.className = 'flex items-center gap-2 text-xs text-wa-blue font-light';
-        const mirrorBox = document.createElement('input');
-        mirrorBox.type = 'checkbox';
-        mirrorBox.checked = !!tpl.mirror_rows;
-        mirrorLabel.append(mirrorBox, t('tpl.mirrorRows'));
-
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'btn-primary';
-        saveBtn.textContent = t('tpl.saveSlots');
-        saveBtn.addEventListener('click', async () => {
-            const slots = inputs.map(collectSlot);
-            try {
-                await axios.post(`${API_URL}/api/admin/templates/${tpl.id}/slots`, { slots, mirror_rows: mirrorBox.checked });
-                tpl.mirror_rows = mirrorBox.checked;
-                saveBtn.textContent = t('msg.saved');
-                setTimeout(() => { saveBtn.textContent = t('tpl.saveSlots'); }, 2000);
-            } catch (err) {
-                alert(t('err.saveFail') + (err.response?.data?.detail || ''));
-            }
-        });
-
-        const toggleBtn = document.createElement('button');
-        toggleBtn.type = 'button';
-        toggleBtn.className = 'btn-primary';
-        toggleBtn.textContent = t('tpl.editSlots');
-        toggleBtn.addEventListener('click', () => {
-            const open = rows.classList.toggle('open');
-            toggleBtn.textContent = t(open ? 'tpl.hideSlots' : 'tpl.editSlots');
-        });
-
-        const actions = document.createElement('div');
-        actions.className = 'tpl-actions';
-        actions.append(toggleBtn, saveBtn, delBtn);
-        const info = document.createElement('div');
-        info.className = 'tpl-info';
-        info.append(title, mirrorLabel, actions);
-
-        card.append(preview, info, rows);
-        return card;
-    }
-
-    async function uploadTemplate(input) {
-        const file = input.files[0];
-        if (!file) return;
-        const form = new FormData();
-        form.append('file', file);
-        try {
-            await axios.post(`${API_URL}/api/admin/templates`, form);
-            loadTemplates();
-        } catch (err) {
-            alert(t('tpl.uploadFail') + (err.response?.data?.detail || ''));
-        } finally {
-            input.value = '';
         }
     }
 
@@ -1909,7 +1309,6 @@
                         <span class="text-xs text-wa-blue font-light">${t('photos.code')}</span>
                         <span class="font-mono text-base font-medium tracking-[0.2em] text-wa-gray select-all">${codeDisplay}</span>
                     </div>
-                    <button data-filename="${safe}" class="print-btn">${t('print.btn')}</button>
                     <button data-filename="${safe}" class="del-btn">
                         ${t('photos.delete')}
                     </button>
@@ -1920,26 +1319,7 @@
     document.getElementById('incomingGrid').addEventListener('click', (e) => {
         const btn = e.target.closest('.del-btn');
         if (btn) deleteIncomingPhoto(btn.dataset.filename);
-        const printBtn = e.target.closest('.print-btn');
-        if (printBtn) printIncomingPhoto(printBtn);
     });
-
-    // 在管理員自己的瀏覽器開啟系統列印視窗（遠端經 ngrok 也可使用）
-    function printIncomingPhoto(btn) {
-        const area = document.getElementById('printArea');
-        const img = document.createElement('img');
-        img.onload = () => {
-            window.print();
-        };
-        img.onerror = () => {
-            area.textContent = '';
-            alert(t('print.fail'));
-        };
-        area.textContent = '';
-        area.appendChild(img);
-        img.src = `/static/incoming/${encodeURIComponent(btn.dataset.filename)}`;
-    }
-    window.addEventListener('afterprint', () => { document.getElementById('printArea').textContent = ''; });
 
     function prependIncomingCard(filename, code) {
         const grid  = document.getElementById('incomingGrid');
@@ -2196,10 +1576,6 @@
     function uploadIncomingPhotos(input) {
         const files = Array.from(input.files);
         input.value = '';
-        enqueueUploads(files);
-    }
-
-    function enqueueUploads(files) {
         if (!files.length) return;
 
         showUploadPanel();
@@ -2390,19 +1766,8 @@
             preview.classList.remove('hidden');
             noBg.classList.add('hidden');
             deleteBtn.classList.remove('hidden');
-            const cacheBust = Date.now();
-            const fallbackUrl = url + '?' + cacheBust;
-            const webpUrl = url.replace(/\.jpg$/, '.webp') + '?' + cacheBust;
-            img.onerror = function () {
-                if (WEBP_SUPPORTED && img.src !== new URL(fallbackUrl, location.href).href) {
-                    img.src = fallbackUrl;
-                } else {
-                    img.onerror = null;
-                }
-            };
-            img.src = WEBP_SUPPORTED ? webpUrl : fallbackUrl;
+            img.src = url + '?' + Date.now();
         } else {
-            img.onerror = null;
             preview.classList.add('hidden');
             noBg.classList.remove('hidden');
             deleteBtn.classList.add('hidden');
@@ -2451,7 +1816,6 @@
         try {
             const res = await axios.get(`${API_URL}/api/admin/accounts`);
             _currentUser = res.data.current;
-            document.getElementById('perfCard').classList.toggle('hidden', res.data.current !== res.data.super_admin);
             renderAccounts(res.data.accounts, res.data.current, res.data.super_admin);
         } catch (_) {}
     }
@@ -2694,8 +2058,6 @@
             resultEl.classList.remove('hidden');
             loadIncoming();
             loadGallerySettings();
-            loadSelfieSettings();
-            loadTemplates();
             loadNgrokStatus();
             loadLineConfig();
             loadBgStatus();
@@ -2744,8 +2106,6 @@
         restoreTabFromHash();
         loadIncoming();
         loadGallerySettings();
-        loadSelfieSettings();
-        loadTemplates();
         loadNgrokStatus();
         loadLineConfig();
         loadBgStatus();
@@ -2768,13 +2128,6 @@
         document.getElementById('ngrokTokenToggle').addEventListener('click', toggleTokenVisibility);
         document.getElementById('copyNgrokUrlBtn').addEventListener('click', copyNgrokUrl);
         document.getElementById('saveGalleryBtn').addEventListener('click', saveGallerySettings);
-        document.getElementById('saveSelfieBtn').addEventListener('click', saveSelfieSettings);
-        document.getElementById('cameraStartBtn').addEventListener('click', startAdminCamera);
-        document.getElementById('cameraStopBtn').addEventListener('click', stopAdminCamera);
-        document.getElementById('cameraShootBtn').addEventListener('click', shootAdminCamera);
-        document.getElementById('cameraSelect').addEventListener('change', () => { if (_camStream) startAdminCamera(); });
-        window.addEventListener('pagehide', stopAdminCamera);
-        document.getElementById('templateUploadFile').addEventListener('change', e => uploadTemplate(e.target));
         document.getElementById('openFolderBtn').addEventListener('click', openIncomingFolder);
         document.getElementById('incomingUploadFile').addEventListener('change', e => uploadIncomingPhotos(e.target));
         document.getElementById('clearIncomingBtn').addEventListener('click', clearIncoming);

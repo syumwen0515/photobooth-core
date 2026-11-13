@@ -14,12 +14,8 @@ photobooth-core/
 │   │   ├── auth.py                # Session 管理、PBKDF2 密碼雜湊
 │   │   ├── ngrok_manager.py       # pyngrok 隧道控制
 │   │   ├── line_bot.py            # LINE Webhook 處理
-│   │   ├── services/
-│   │   │   ├── template_service.py   # 模板透明槽位自動偵測（Pillow + numpy）
-│   │   │   └── composite_service.py  # 照片裁切 / 貼入槽位 / 模板疊合 / JPEG 輸出
 │   │   └── templates/
 │   │       ├── admin.html         # 管理後台介面
-│   │       ├── app.html           # 客戶自拍頁面（/app）
 │   │       ├── login.html
 │   │       ├── index.html
 │   │       └── download.html      # 照片取件頁面
@@ -32,9 +28,6 @@ photobooth-core/
 │       ├── accounts.json
 │       ├── fonts_meta.json        # 自訂字型元資料（按需生成）
 │       ├── gallery_config.json    # Gallery 啟用狀態 + 浮水印文字（按需生成）
-│       ├── templates/             # 合成模板 PNG（按需生成）
-│       ├── templates.json         # 模板中繼資料與槽位座標（按需生成）
-│       ├── selfie_config.json     # 自拍活動開關（預設關閉，按需生成）
 │       ├── line_config.json
 │       ├── ngrok_config.json
 │       ├── photo_codes.json
@@ -211,7 +204,7 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 |------|------|------|
 | GET | `/api/admin/incoming` | 照片列表（含取件碼）|
 | POST | `/api/admin/upload-incoming` | 單一請求上傳一張照片（JPG / PNG，最大 50 MB）；管理介面支援多選並逐檔送出 |
-| GET | `/api/admin/incoming/thumb/{filename}` | 取得縮圖（480px；依 `Accept` 回傳 WebP 或 JPEG，有快取）|
+| GET | `/api/admin/incoming/thumb/{filename}` | 取得縮圖（480px WebP，有快取）|
 | DELETE | `/api/admin/incoming/{filename}` | 刪除單張 |
 | DELETE | `/api/admin/incoming` | 清除全部 |
 | POST | `/api/admin/open-incoming-folder` | 以系統檔案總管開啟 incoming 資料夾（僅限本機，遠端回傳 403）|
@@ -237,35 +230,13 @@ ngrok 隧道會自動使用伺服器實際監聽的 port，無須手動填寫。
 | 方法 | 端點 | 說明 |
 |------|------|------|
 | GET | `/api/gallery` | 照片列表（公開，按拍攝時間排序；含 `enabled` / `wm_version` 欄位）|
-| GET | `/api/gallery/thumb/{filename}` | 公開縮圖（480px；依 `Accept` 回傳含浮水印的 WebP 或 JPEG，MD5 hash 快取；接受 `?v=` query 用於瀏覽器快取失效）|
+| GET | `/api/gallery/thumb/{filename}` | 公開縮圖（480px WebP，含浮水印，MD5 hash 快取；接受 `?v=` query 用於瀏覽器快取失效）|
 
 ### Gallery 設定
 | 方法 | 端點 | 說明 |
 |------|------|------|
 | GET | `/api/admin/gallery-settings` | 取得 Gallery 設定（需登入）|
 | POST | `/api/admin/gallery-settings` | 儲存 Gallery 設定（`enabled`、`watermark_text`）；浮水印變更時自動清除公開縮圖快取 |
-
-### 自拍活動與模板（選用）
-未上傳模板、未開啟「自拍活動」時，系統行為與原本完全相同。合成結果寫入 `incoming/`，沿用取件碼、Gallery 與縮圖機制。
-
-完成合成後，`/app` 顯示預覽、取件碼、本機產生的 QR code 和取件連結；「再次拍攝」會重新載入可用版型，不會刪除已產生的照片。QR code 使用目前頁面的網址，跨裝置掃描時需使用掃描裝置可連線的 HTTPS 位址（例如 ngrok），不能使用 localhost。
-
-| 方法 | 端點 | 說明 |
-|------|------|------|
-| GET/POST | `/api/admin/selfie-settings` | 取得 / 儲存自拍活動開關（需登入）|
-| GET | `/api/admin/templates` | 模板列表（需登入）|
-| POST | `/api/admin/templates` | 上傳模板 PNG 並自動偵測透明槽位（`file`、選填 `name`；需登入）|
-| POST | `/api/admin/templates/{id}/slots` | 微調槽位座標（需登入）|
-| DELETE | `/api/admin/templates/{id}` | 刪除模板（需登入）|
-| GET | `/api/admin/templates/{id}/image` | 模板圖檔（需登入）|
-| GET | `/app` | 客戶自拍頁（需 HTTPS 才能開啟相機；僅此路徑 `Permissions-Policy: camera=(self)`）|
-| GET | `/api/v1/customer/templates` | 可用模板列表（活動關閉時 `enabled:false`）|
-| GET | `/api/v1/customer/templates/{id}/image` | 模板圖檔（活動關閉時 403）|
-| POST | `/api/v1/customer/composite` | `multipart/form-data`：`template_id` + `files`（照片數須等於槽位數，依槽位順序）；回傳 `code` 與 `download_url`。速率限制：`SELFIE_RATE_LIMIT`/分/IP |
-
-左右對稱版型：若每一列恰好有 2 個槽位，上傳時會自動啟用「左右對稱」（`mirror_rows`），同一列的左右槽位使用同一張照片，客戶只需拍列數張（例如 4 列 8 槽 → 4 張）；後台可隨時勾選或取消。
-
-LINE 交付沿用現有流程：客戶在 LINE 輸入取件碼取得 `/download/{code}` 連結。
 
 ### 照片取件
 | 方法 | 端點 | 說明 |
@@ -296,7 +267,6 @@ LINE 交付沿用現有流程：客戶在 LINE 輸入取件碼取得 `/download/
 | `LOG_LEVEL` | `INFO` | 日誌等級：`DEBUG` / `INFO` / `WARNING` / `ERROR` |
 | `RELOAD_ADMIN_HTML` | `false` | 設為 `true` 停用 HTML 快取（開發用）|
 | `LOGIN_RATE_LIMIT` | `10` | 每個 IP 每分鐘最多幾次登入嘗試（可調高，建議不低於 5）|
-| `SELFIE_RATE_LIMIT` | `6` | 客戶自拍合成端點每個 IP 每分鐘最多幾次 |
 | `TRUSTED_PROXY_IPS` | 空（不信任） | 逗號分隔的可信代理 IP，設定後才信任 `X-Forwarded-For`；例如 `127.0.0.1,::1`（放在 nginx 後方時使用）|
 
 > **安全建議**：生產展場部署時，建議透過環境變數注入所有敏感 Token（`NGROK_AUTHTOKEN`、`LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN`），避免憑證以明文形式落盤於 `storage/` 目錄。
@@ -324,7 +294,7 @@ LINE 交付沿用現有流程：客戶在 LINE 輸入取件碼取得 `/download/
 | 本機限定功能 | `open-incoming-folder` 端點驗證 TCP 連線來源 IP（非 `Host` header，防止 ngrok 環境下的 Host 偽造），非 localhost 回傳 403 |
 | LINE Webhook | 驗證 `X-Line-Signature`（HMAC-SHA256）|
 | 公開照片存取 | **Gallery**：公開內容僅有 480px 浮水印縮圖；Canvas 與右鍵/拖曳攔截只能降低一般另存便利，不能阻止使用者擷取瀏覽器已取得的資料。原圖需有效取件碼或管理員 session。**取件頁面**：`<img>` 顯示縮圖；下載按鈕優先使用 Web Share API（iOS 15+ / Android 86+），不支援時以 blob URL 下載 |
-| 縮圖快取命名 | 公開縮圖以 `MD5(filename)` 命名（`pub_<hash>.webp` 或 `pub_<hash>.jpg`，依 `Accept` 格式協商），避免中文/特殊字元檔名在 Windows 路徑比對不一致；Pillow 讀圖改用 BytesIO，避免 Unicode path 相容問題 |
+| 縮圖快取命名 | 公開縮圖以 `MD5(filename)` 命名（`pub_<hash>.webp`），避免中文/特殊字元檔名在 Windows 路徑比對不一致；Pillow 讀圖改用 BytesIO，避免 Unicode path 相容問題 |
 | 取件碼生成 | 使用 Python `secrets.choice()`（CSPRNG）生成 6 碼取件碼，確保攻擊者無法從已知碼推算後續碼；`random.choices()`（梅森旋轉，非密碼學安全）已移除 |
 | 敏感 Token 環境變數注入 | `NGROK_AUTHTOKEN`、`LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN` 均支援環境變數覆蓋，優先序高於 JSON 落盤設定；建議展場生產部署時以環境變數注入，不將 Token 存入 `storage/` 明文檔 |
 
@@ -346,7 +316,7 @@ LINE 交付沿用現有流程：客戶在 LINE 輸入取件碼取得 `/download/
 
 ---
 
-**版本**: 0.6.0 | **更新**: 2026-11-13（模板透明槽位偵測、客戶自拍合成 `/app`、左右對稱版型、後台誤判槽位刪除；前次：2026-11-11 帳號權限：admin 為最高管理者、改密碼僅限本人、改自己密碼後自動跳轉登入、後台 401 自動導向登入；前次：Linux 繁中浮水印字型；前次：Linux 啟動、初始化管理員密碼、Gallery 停用端點封鎖、帳號 session 撤銷與回歸測試）| **狀態**: 上線前驗證中
+**版本**: 0.5.11 | **更新**: 2026-11-11（帳號權限：admin 為最高管理者、改密碼僅限本人、改自己密碼後自動跳轉登入、後台 401 自動導向登入；前次：Linux 繁中浮水印字型；前次：Linux 啟動、初始化管理員密碼、Gallery 停用端點封鎖、帳號 session 撤銷與回歸測試）| **狀態**: 上線前驗證中
 
 ## 開發中 / 規劃中功能
 
@@ -357,16 +327,7 @@ LINE 交付沿用現有流程：客戶在 LINE 輸入取件碼取得 `/download/
 | 多語系（i18n）| admin.html | ✅ 完成 | `TRANSLATIONS` 物件 + `data-i18n`，支援 zh-TW / en |
 | 多語系（i18n）| login / index / download | ✅ 完成 | 自動偵測瀏覽器語言；TRANSLATIONS + applyLang + data-i18n；偏好跨頁持久化 |
 | Gallery 管理後台控制 | admin.html | ✅ 完成 | 照片 tab 新增 Gallery 設定卡片：開/關切換（toggle switch）+ 浮水印文字自訂；浮水印變更自動清伺服器快取並以 `wm_version` 使瀏覽器快取失效 |
-| 模板自動偵測 + 客戶自拍合成 | admin.html / app.html | ✅ 完成 | 後台上傳含透明區域的 PNG 自動偵測槽位（可微調）；`/app` 自拍頁依槽位順序拍攝後合成，結果進入取件碼流程；相機控制與列印尚未實作 |
 | 管理員網頁上傳照片 | admin.html | ✅ 完成 | 照片 tab 新增「上傳照片」按鈕；多選 JPG / PNG；自動安全命名 + 取件碼；即時插卡並廣播 WebSocket |
 | 全域佇列上傳 + 懸浮進度視窗 | admin.html | ✅ 完成 | 2 線程並發全域佇列；第二次點擊繼續排隊不另開 pool；右下角懸浮面板逐檔顯示進度條；完成綠勾 / 失敗紅叉；3 秒自動收起 |
 | CSP `script-src unsafe-inline` 移除；`style-src` 公開路徑 nonce 化 | 全頁面 | ✅ 完成 | Nonce 方案：middleware 生成 per-request nonce，`_apply_nonce()` 注入 4 個 HTML 模板；`script-src` 全路徑移除 `unsafe-inline`；`style-src` 按路徑分流（公開路徑 nonce，`/admin` 保留 `unsafe-inline` 供 Tailwind CDN）；`index.html` 移除 Tailwind Play CDN；4 個模板 111 個 `style=""` inline attribute 全數轉為具名 CSS class；**所有 attribute event handler 已移除，改用 `addEventListener`** |
 | ZAP 弱點掃描修補 | 全頁面 | ✅ 完成 | style-src unsafe-inline 最小化（公開路徑 nonce-only）、SRI 問題（Tailwind CDN 移除）、Anti-CSRF 表面消除（login form method/action 移除）、跨域 JS 來源消除（index.html 無外部 JS） |
-
-
-## 相機拍照與列印（選用）
-
-- **相機**：後台「相機拍照」使用瀏覽器 `getUserMedia`，將相機當 USB 網路攝影機。Sony A7C / A7 IV 請開啟 USB 串流或安裝 Imaging Edge Webcam；Canon 請安裝 EOS Webcam Utility。需在 localhost 或 HTTPS 開啟後台；拍攝結果加入既有上傳流程。
-- **列印**：照片卡片的「列印」按鈕會在管理員自己的瀏覽器開啟系統列印視窗（經 ngrok 遠端也可使用），由該裝置選擇印表機。
-- **模板偵測**：與影像邊緣相連的透明區在存在內部透明區時會被忽略（視為外圍留白）。
-- `start.bat` 啟動前會檢查 numpy，缺少時自動安裝 `backend\requirements.txt`。
