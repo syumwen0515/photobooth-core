@@ -95,7 +95,8 @@
 
         @media (orientation: landscape) and (min-width: 700px) {
             .app-card.result-active { max-width: 760px; }
-            .result-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 280px); gap: 32px; align-items: center; }
+            .result-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 280px); gap: 32px; align-items: stretch; }
+            .result-preview, .result-pickup { justify-content: center; }
             .result-photo { max-height: 65vh; }
             .result-code-group { order: 1; }
             .result-actions { order: 2; }
