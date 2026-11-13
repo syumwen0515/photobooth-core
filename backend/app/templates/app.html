@@ -85,6 +85,10 @@
         .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
         .btn-primary { background: rgba(43, 43, 43, 0.82); color: #fff; border-color: transparent; }
         .actions { display: flex; flex-direction: column; gap: 10px; }
+        .result-photo { display: block; max-width: 100%; max-height: 45vh; object-fit: contain; margin: 0 auto; }
+        .result-code { text-align: center; font-size: 1.4rem; letter-spacing: 0.2em; font-weight: 400; }
+        .result-qr { display: block; width: min(100%, 240px); height: auto; margin: 0 auto; image-rendering: pixelated; }
+        .result-link { text-decoration: none; }
 
         @keyframes fadeUp {
             from { opacity: 0; transform: translateY(14px); }
@@ -107,7 +111,10 @@
 <div class="app-card anim">
     <h1 class="title" data-i18n="app.title">自拍拍貼</h1>
 
-    <section id="view-loading"><p class="hint" data-i18n="app.loading">載入中…</p></section>
+    <section id="view-loading">
+        <p class="hint" data-i18n="app.loading">載入中…</p>
+        <button id="btn-retry-templates" class="btn" data-i18n="app.retry" hidden>重新載入</button>
+    </section>
     <section id="view-closed" hidden><p class="hint" data-i18n="app.closed">自拍活動目前尚未開放</p></section>
     <section id="view-insecure" hidden><p class="hint" data-i18n="app.insecure">需要 HTTPS 連線才能使用相機，請改用安全連結開啟</p></section>
 
@@ -133,6 +140,22 @@
         </div>
     </section>
 
+    <section id="view-result" hidden>
+        <p class="hint" data-i18n="app.result">拍貼完成</p>
+        <img id="result-photo" class="result-photo" alt="" hidden>
+        <p id="result-photo-error" class="error" hidden data-i18n="app.previewFail">預覽載入失敗，仍可使用取件碼或連結取件。</p>
+        <p class="hint" data-i18n="app.pickupCode">取件碼</p>
+        <p id="result-code" class="result-code"></p>
+        <canvas id="result-qr" class="result-qr" role="img" aria-label="QR code" hidden></canvas>
+        <p id="result-qr-error" class="error" hidden data-i18n="app.qrFail">QR code 產生失敗，請使用取件碼或連結。</p>
+        <p id="result-qr-hint" class="hint" hidden data-i18n="app.qrHint">掃描 QR code 取件；掃描裝置需能連線至此網站。</p>
+        <p id="result-local-hint" class="hint" hidden data-i18n="app.localHint">localhost 無法供其他裝置掃描取件，請改用可連線的 HTTPS 網址。</p>
+        <div class="actions">
+            <a id="result-link" class="btn result-link" data-i18n="app.openPickup">開啟取件頁</a>
+            <button id="btn-again" class="btn btn-primary" data-i18n="app.again">再次拍攝</button>
+        </div>
+    </section>
+
     <p id="error" class="error"></p>
 </div>
 
@@ -140,6 +163,7 @@
     <span class="bottom-text">風嶺拍貼機 · PHOTOBOOTH SYSTEM</span>
 </div>
 
+<script nonce="__CSP_NONCE__">__QR_CODE_GENERATOR__</script>
 <script nonce="__CSP_NONCE__">
     /* ── i18n ── */
     const TRANSLATIONS = {
@@ -159,7 +183,18 @@
             'app.composing': '合成中，請稍候…',
             'app.camDenied': '無法使用相機，請允許瀏覽器的相機權限',
             'app.fail': '合成失敗，請稍後再試',
+            'app.templateFail': '無法載入版型，請重新載入。',
             'app.rate': '操作過於頻繁，請稍後再試',
+            'app.retry': '重新載入',
+            'app.result': '拍貼完成',
+            'app.pickupCode': '取件碼',
+            'app.previewFail': '預覽載入失敗，仍可使用取件碼或連結取件。',
+            'app.previewAlt': '合成照片預覽',
+            'app.qrFail': 'QR code 產生失敗，請使用取件碼或連結。',
+            'app.qrHint': '掃描 QR code 取件；掃描裝置需能連線至此網站。',
+            'app.localHint': 'localhost 無法供其他裝置掃描取件，請改用可連線的 HTTPS 網址。',
+            'app.openPickup': '開啟取件頁',
+            'app.again': '再次拍攝',
         },
         'en': {
             'app.title': 'Selfie Photo Booth',
@@ -177,7 +212,18 @@
             'app.composing': 'Composing, please wait…',
             'app.camDenied': 'Camera unavailable. Please allow camera permission in your browser.',
             'app.fail': 'Composition failed. Please try again later.',
+            'app.templateFail': 'Could not load layouts. Please retry.',
             'app.rate': 'Too many requests. Please try again later.',
+            'app.retry': 'Retry',
+            'app.result': 'Your photo is ready',
+            'app.pickupCode': 'Pickup code',
+            'app.previewFail': 'Preview unavailable. Use the pickup code or link to retrieve your photo.',
+            'app.previewAlt': 'Composed photo preview',
+            'app.qrFail': 'QR code unavailable. Use the pickup code or link instead.',
+            'app.qrHint': 'Scan the QR code to retrieve your photo. The scanning device must be able to reach this website.',
+            'app.localHint': 'Other devices cannot scan a localhost link. Use a reachable HTTPS address instead.',
+            'app.openPickup': 'Open pickup page',
+            'app.again': 'Take another',
         }
     };
     const _browserLang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
@@ -204,10 +250,14 @@
     var _stream = null;
     var _shots = [];          // [{blob, url}]
     var _busy = false;
+    var _resultUrl = null;
+    var _resultGeneration = 0;
+    var _templateUrls = [];
+    var _templateGeneration = 0;
 
     function $(id) { return document.getElementById(id); }
     function showView(name) {
-        ['loading', 'closed', 'insecure', 'select', 'camera'].forEach(function (v) {
+        ['loading', 'closed', 'insecure', 'select', 'camera', 'result'].forEach(function (v) {
             $('view-' + v).hidden = (v !== name);
         });
     }
@@ -215,21 +265,31 @@
 
     /* ── Template list ── */
     async function loadTemplates() {
+        showView('loading');
+        setError('');
+        $('btn-retry-templates').hidden = true;
+        _templateGeneration += 1;
+        _templateUrls.forEach(function (url) { URL.revokeObjectURL(url); });
+        _templateUrls = [];
+        $('tpl-list').textContent = '';
         if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             showView('insecure');
             return;
         }
         try {
             var r = await fetch(API + '/templates', { headers: HEADERS });
-            if (r.status === 429) { setError(t('app.rate')); return; }
+            if (r.status === 429) throw new Error('rate');
+            if (!r.ok) throw new Error('fail');
             var data = await r.json();
             if (!data.enabled || !data.templates.length) { showView('closed'); return; }
             await renderTemplates(data.templates);
             showView('select');
         } catch (e) {
-            setError(t('app.fail'));
+            setError(e.message === 'rate' ? t('app.rate') : t('app.templateFail'));
+            $('btn-retry-templates').hidden = false;
         }
     }
+    $('btn-retry-templates').addEventListener('click', loadTemplates);
 
     async function renderTemplates(list) {
         var box = $('tpl-list');
@@ -249,14 +309,19 @@
             btn.appendChild(img);
             btn.appendChild(label);
             box.appendChild(btn);
-            loadTemplateImage(tpl.id, img);
+            loadTemplateImage(tpl.id, img, _templateGeneration);
         }
     }
 
-    function loadTemplateImage(id, img) {
+    function loadTemplateImage(id, img, generation) {
         fetch(API + '/templates/' + id + '/image', { headers: HEADERS })
             .then(function (r) { if (!r.ok) throw new Error(); return r.blob(); })
-            .then(function (blob) { img.src = URL.createObjectURL(blob); })
+            .then(function (blob) {
+                if (generation !== _templateGeneration) return;
+                var url = URL.createObjectURL(blob);
+                _templateUrls.push(url);
+                img.src = url;
+            })
             .catch(function () {});
     }
 
@@ -420,15 +485,97 @@
     });
 
     $('btn-retake').addEventListener('click', function () {
+        if (_busy) return;
         resetShots();
         updateProgress();
     });
 
     $('btn-back').addEventListener('click', function () {
+        if (_busy) return;
         stopCamera();
         resetShots();
         setError('');
         showView('select');
+    });
+
+    /* ── Result ── */
+    function clearResult() {
+        _resultGeneration += 1;
+        if (_resultUrl) URL.revokeObjectURL(_resultUrl);
+        _resultUrl = null;
+        $('result-photo').removeAttribute('src');
+        $('result-photo').hidden = true;
+        $('result-photo-error').hidden = true;
+        $('result-qr').hidden = true;
+        $('result-qr-hint').hidden = true;
+        $('result-qr-error').hidden = true;
+        $('result-link').removeAttribute('href');
+        $('result-code').textContent = '';
+    }
+
+    function renderQr(url) {
+        var qr = qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+        var count = qr.getModuleCount();
+        var scale = Math.max(2, Math.floor(240 / (count + 8)));
+        var canvas = $('result-qr');
+        canvas.width = canvas.height = (count + 8) * scale;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#000';
+        for (var row = 0; row < count; row++) {
+            for (var col = 0; col < count; col++) {
+                if (qr.isDark(row, col)) ctx.fillRect((col + 4) * scale, (row + 4) * scale, scale, scale);
+            }
+        }
+        canvas.hidden = false;
+        $('result-qr-hint').hidden = false;
+    }
+
+    async function loadResultPreview(code, generation) {
+        try {
+            var r = await fetch('/api/photo/' + encodeURIComponent(code) + '/thumb', { headers: HEADERS });
+            if (!r.ok || !(r.headers.get('content-type') || '').toLowerCase().startsWith('image/')) throw new Error('preview');
+            var blob = await r.blob();
+            if (generation !== _resultGeneration) return;
+            _resultUrl = URL.createObjectURL(blob);
+            $('result-photo').onerror = function () {
+                if (generation !== _resultGeneration) return;
+                $('result-photo').hidden = true;
+                $('result-photo-error').hidden = false;
+            };
+            $('result-photo').src = _resultUrl;
+            $('result-photo').hidden = false;
+        } catch (e) {
+            if (generation === _resultGeneration) $('result-photo-error').hidden = false;
+        }
+    }
+
+    function showResult(data) {
+        clearResult();
+        $('result-code').textContent = data.code;
+        $('result-photo').alt = t('app.previewAlt');
+        var pickupUrl = new URL(data.download_url, window.location.origin);
+        $('result-link').href = pickupUrl.href;
+        var hostname = window.location.hostname.toLowerCase();
+        $('result-local-hint').hidden = hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '[::1]';
+        showView('result');
+        try {
+            renderQr(pickupUrl.href);
+        } catch (e) {
+            console.error('QR code generation failed:', e);
+            $('result-qr-error').hidden = false;
+        }
+        loadResultPreview(data.code, _resultGeneration);
+    }
+
+    $('btn-again').addEventListener('click', function () {
+        clearResult();
+        _template = null;
+        resetShots();
+        loadTemplates();
     });
 
     /* ── Submit ── */
@@ -438,6 +585,7 @@
         setError('');
         var btn = $('btn-submit');
         btn.disabled = true;
+        ['btn-upload', 'btn-retake', 'btn-back', 'btn-shoot'].forEach(function (id) { $(id).disabled = true; });
         btn.textContent = t('app.composing');
         try {
             var form = new FormData();
@@ -448,11 +596,14 @@
             if (!r.ok) throw new Error('fail');
             var data = await r.json();
             stopCamera();
-            window.location.href = data.download_url;
+            resetShots();
+            showResult(data);
         } catch (e) {
             setError(e.message === 'rate' ? t('app.rate') : t('app.fail'));
+        } finally {
             btn.disabled = false;
             btn.textContent = t('app.submit');
+            ['btn-upload', 'btn-retake', 'btn-back', 'btn-shoot'].forEach(function (id) { $(id).disabled = false; });
             _busy = false;
         }
     });

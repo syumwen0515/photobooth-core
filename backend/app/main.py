@@ -753,7 +753,8 @@ async def get_index(request: Request) -> str:
 
 @app.get(SELFIE_PAGE_ROUTE, response_class=HTMLResponse, tags=["Pages"])
 async def get_selfie_page(request: Request) -> str:
-    return _apply_nonce(_get_html("app.html"), request.state.csp_nonce)
+    html = _get_html("app.html").replace("__QR_CODE_GENERATOR__", _get_html("vendor/qrcode-generator-1.4.4.js"))
+    return _apply_nonce(html, request.state.csp_nonce)
 
 
 @app.get("/login", response_class=HTMLResponse, tags=["Pages"])

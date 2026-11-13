@@ -1,4 +1,5 @@
 import io
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -123,7 +124,13 @@ class SelfieFlowTests(unittest.TestCase):
     def test_selfie_page_allows_camera_only_on_app_route(self):
         app_res = self.client.get(main.SELFIE_PAGE_ROUTE)
         self.assertIn("camera=(self)", app_res.headers["Permissions-Policy"])
-        self.assertNotIn("unsafe-inline", app_res.headers["Content-Security-Policy"])
+        csp = app_res.headers["Content-Security-Policy"]
+        self.assertNotIn("unsafe-inline", csp)
+        nonce = re.search(r"'nonce-([^']+)'", csp).group(1)
+        self.assertIn(f'<script nonce="{nonce}">', app_res.text)
+        self.assertIn("QR Code Generator for JavaScript", app_res.text)
+        self.assertNotIn("__QR_CODE_GENERATOR__", app_res.text)
+        self.assertNotIn("__CSP_NONCE__", app_res.text)
         other = self.client.get("/login")
         self.assertIn("camera=()", other.headers["Permissions-Policy"])
 
